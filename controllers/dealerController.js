@@ -1,6 +1,7 @@
 const Dealer = require('../models/Dealer');
 const User = require('../models/User');
 const Product = require('../models/Product');
+const Review = require('../models/Review');
 
 // @desc    Get all dealers
 // @route   GET /api/dealers
@@ -87,13 +88,18 @@ const deleteDealerAdmin = async (req, res) => {
     // Delete associated User account
     await User.findByIdAndDelete(dealer.userId);
 
+    // Find all products created by this dealer to delete their reviews
+    const products = await Product.find({ dealerId: dealer.userId });
+    const productIds = products.map(p => p._id);
+    await Review.deleteMany({ productId: { $in: productIds } });
+
     // Delete all products created by this dealer
     await Product.deleteMany({ dealerId: dealer.userId });
 
     // Delete dealer profile
     await Dealer.deleteOne({ _id: req.params.id });
 
-    res.json({ message: 'Dealer profile, user account, and all associated products deleted successfully' });
+    res.json({ message: 'Dealer profile, user account, all associated products, and reviews deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
