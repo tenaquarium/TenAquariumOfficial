@@ -168,7 +168,7 @@ const smsApproveDealer = async (req, res) => {
       </html>
     `);
   } catch (error) {
-    res.status(500).send(\`<h1>Error: \${error.message}</h1>\`);
+    res.status(500).send(`<h1>Error: ${error.message}</h1>`);
   }
 };
 
@@ -207,7 +207,7 @@ const smsRejectDealer = async (req, res) => {
       </html>
     `);
   } catch (error) {
-    res.status(500).send(\`<h1>Error: \${error.message}</h1>\`);
+    res.status(500).send(`<h1>Error: ${error.message}</h1>`);
   }
 };
 
