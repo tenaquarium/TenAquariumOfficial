@@ -152,6 +152,7 @@ const registerDealer = async (req, res) => {
         email: user.email,
         role: user.role,
         dealerProfile: dealer,
+        token: generateToken(user._id),
         message: 'Dealer registration submitted. Admin approval is pending.',
       });
     } else {
