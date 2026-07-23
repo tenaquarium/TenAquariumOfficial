@@ -28,14 +28,14 @@ const couriers = [
   { name: 'DTDC', fuel: 15 }
 ];
 
-const serviceTypes = ['Surface', 'Express', 'Air'];
+const serviceTypes = ['Surface', 'Express'];
 const shipmentTypes = ['Document', 'Non-Document'];
 const zones = ['Zone A', 'Zone B', 'Zone C', 'Zone D', 'Zone E'];
 const zoneIndex = { 'Zone A': 0, 'Zone B': 1, 'Zone C': 2, 'Zone D': 3, 'Zone E': 4 };
 
 const seedCourierData = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tenaquarium');
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://tenaquarium_db_user:tenaquariumdb@tenaquariumcluster.1tpyeeh.mongodb.net/tenaquarium');
     console.log('MongoDB Connected for Courier Seeding...');
 
     // Clear existing data
