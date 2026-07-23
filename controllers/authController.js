@@ -133,6 +133,19 @@ const registerDealer = async (req, res) => {
         approvalStatus: 'pending',
       });
 
+      // Send SMS notification to Admin
+      try {
+        const { sendSMS } = require('../utils/sms');
+        const baseUrl = process.env.SMS_REDIRECT_BASE_URL || `http://${req.get('host')}`;
+        const message = `New Dealer Registered: ${businessName} (Owner: ${ownerName})\n` +
+          `Approve: ${baseUrl}/api/dealers/sms-approve/${dealer._id}\n` +
+          `Reject: ${baseUrl}/api/dealers/sms-reject/${dealer._id}`;
+        
+        await sendSMS(message, process.env.ADMIN_PHONE_NUMBER);
+      } catch (smsError) {
+        console.error('Failed to send dealer registration SMS to admin:', smsError.message);
+      }
+
       res.status(201).json({
         _id: user._id,
         name: user.name,
@@ -259,6 +272,12 @@ const updateUserProfile = async (req, res) => {
           dealer.googlePlaceId = req.body.googlePlaceId !== undefined ? extractPlaceId(req.body.googlePlaceId) : dealer.googlePlaceId;
           dealer.courierServices = req.body.courierServices !== undefined ? req.body.courierServices : dealer.courierServices;
           
+          dealer.bankName = req.body.bankName !== undefined ? req.body.bankName : dealer.bankName;
+          dealer.accountHolderName = req.body.accountHolderName !== undefined ? req.body.accountHolderName : dealer.accountHolderName;
+          dealer.accountNumber = req.body.accountNumber !== undefined ? req.body.accountNumber : dealer.accountNumber;
+          dealer.ifscCode = req.body.ifscCode !== undefined ? req.body.ifscCode : dealer.ifscCode;
+          dealer.branchName = req.body.branchName !== undefined ? req.body.branchName : dealer.branchName;
+
           if (req.body.resubmit === true) {
             dealer.approvalStatus = 'pending';
             dealer.rejectionReason = '';

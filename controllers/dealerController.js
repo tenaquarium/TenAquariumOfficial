@@ -133,6 +133,84 @@ const getApprovedDealersPublic = async (req, res) => {
   }
 };
 
+// @desc    Approve dealer via SMS link
+// @route   GET /api/dealers/sms-approve/:id
+// @access  Public
+const smsApproveDealer = async (req, res) => {
+  try {
+    const dealer = await Dealer.findById(req.params.id);
+    if (!dealer) {
+      return res.status(404).send('<h1>Dealer profile not found</h1>');
+    }
+
+    dealer.approvalStatus = 'approved';
+    await dealer.save();
+
+    res.send(`
+      <html>
+        <head>
+          <title>Dealer Approved</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #f0f9ff; margin: 0; }
+            .card { background: white; padding: 3rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; max-width: 400px; border: 1px solid #e0f2fe; }
+            h1 { color: #0284c7; margin-bottom: 1rem; }
+            p { color: #475569; line-height: 1.6; }
+            .badge { background: #dcfce7; color: #15803d; padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Approval Complete</h1>
+            <p><strong>${dealer.businessName}</strong> has been successfully approved as an active dealer.</p>
+            <span class="badge">Approved ✓</span>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    res.status(500).send(\`<h1>Error: \${error.message}</h1>\`);
+  }
+};
+
+// @desc    Reject dealer via SMS link
+// @route   GET /api/dealers/sms-reject/:id
+// @access  Public
+const smsRejectDealer = async (req, res) => {
+  try {
+    const dealer = await Dealer.findById(req.params.id);
+    if (!dealer) {
+      return res.status(404).send('<h1>Dealer profile not found</h1>');
+    }
+
+    dealer.approvalStatus = 'rejected';
+    await dealer.save();
+
+    res.send(`
+      <html>
+        <head>
+          <title>Dealer Rejected</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #fff1f2; margin: 0; }
+            .card { background: white; padding: 3rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; max-width: 400px; border: 1px solid #ffe4e6; }
+            h1 { color: #e11d48; margin-bottom: 1rem; }
+            p { color: #475569; line-height: 1.6; }
+            .badge { background: #ffe4e6; color: #991b1b; padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Dealer Rejected</h1>
+            <p><strong>${dealer.businessName}</strong> store application has been rejected.</p>
+            <span class="badge">Rejected ✗</span>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    res.status(500).send(\`<h1>Error: \${error.message}</h1>\`);
+  }
+};
+
 module.exports = {
   getDealers,
   updateDealerApproval,
@@ -140,4 +218,6 @@ module.exports = {
   deleteDealerAdmin,
   getPublicDealerProfile,
   getApprovedDealersPublic,
+  smsApproveDealer,
+  smsRejectDealer,
 };

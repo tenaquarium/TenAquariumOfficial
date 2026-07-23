@@ -13,6 +13,7 @@ const {
   actionOrderSMS,
   getPublicTracking,
   markRefundCompleted,
+  updateDealerPayoutStatus,
 } = require('../controllers/orderController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -33,6 +34,7 @@ router.route('/:id')
 
 router.put('/:id/payment-proof', protect, authorize('customer', 'dealer'), submitPaymentProof);
 router.put('/:id/refund-complete', protect, authorize('admin'), markRefundCompleted);
+router.put('/:id/dealer-payout', protect, authorize('admin'), updateDealerPayoutStatus);
 router.get('/public-track/:id', getPublicTracking);
 
 module.exports = router;

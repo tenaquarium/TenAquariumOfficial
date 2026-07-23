@@ -892,6 +892,32 @@ const markRefundCompleted = async (req, res) => {
   }
 };
 
+
+
+// @desc    Admin update dealer payout status for an order
+// @route   PUT /api/orders/:id/dealer-payout
+// @access  Private/Admin
+const updateDealerPayoutStatus = async (req, res) => {
+  const { payoutStatus } = req.body;
+  if (!['Pending', 'Processing', 'Paid'].includes(payoutStatus)) {
+    return res.status(400).json({ message: 'Invalid payout status' });
+  }
+
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    order.dealerPayoutStatus = payoutStatus;
+    await order.save();
+
+    res.json({ message: `Dealer payout status updated to ${payoutStatus}`, order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   submitPaymentProof,
@@ -905,4 +931,5 @@ module.exports = {
   actionOrderSMS,
   getPublicTracking,
   markRefundCompleted,
+  updateDealerPayoutStatus,
 };

@@ -7,12 +7,16 @@ const {
   deleteDealerAdmin,
   getPublicDealerProfile,
   getApprovedDealersPublic,
+  smsApproveDealer,
+  smsRejectDealer,
 } = require('../controllers/dealerController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public endpoints
 router.get('/approved/public', getApprovedDealersPublic);
 router.get('/:id/public', getPublicDealerProfile);
+router.get('/sms-approve/:id', smsApproveDealer);
+router.get('/sms-reject/:id', smsRejectDealer);
 
 // All subsequent routes require Admin authorization
 router.use(protect, authorize('admin'));

@@ -62,6 +62,26 @@ const dealerSchema = new mongoose.Schema(
       type: [String],
       default: ['DTDC', 'Professional Courier', 'ST Courier'],
     },
+    bankName: {
+      type: String,
+      default: '',
+    },
+    accountHolderName: {
+      type: String,
+      default: '',
+    },
+    accountNumber: {
+      type: String,
+      default: '',
+    },
+    ifscCode: {
+      type: String,
+      default: '',
+    },
+    branchName: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

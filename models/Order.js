@@ -56,6 +56,11 @@ const orderSchema = new mongoose.Schema(
       enum: ['Processing', 'Shipped', 'In Transit', 'Delivered', 'Cancelled', 'Returned'],
       default: 'Processing',
     },
+    dealerPayoutStatus: {
+      type: String,
+      enum: ['Pending', 'Processing', 'Paid'],
+      default: 'Pending',
+    },
     customOrderId: {
       type: String,
       unique: true,
