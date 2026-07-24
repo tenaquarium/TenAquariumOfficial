@@ -64,9 +64,6 @@ mongoose.connect(MONGO_URI)
         role: 'dealer',
         status: 'active'
       });
-      console.log(`Created dealer user: ${dealerUser.name} (${dealerUser._id})`);
-    } else {
-      console.log(`Dealer user exists: ${dealerUser.name} (${dealerUser._id})`);
     }
 
     // 2. Check/Create Dealer Profile
@@ -89,120 +86,130 @@ mongoose.connect(MONGO_URI)
           ifscCode: 'SBIN0001234'
         }
       });
-      console.log(`Created dealer profile: ${dealerProfile.businessName}`);
-    } else {
-      console.log(`Dealer profile exists: ${dealerProfile.businessName}`);
     }
 
-    // 3. Define 8 real high-quality aquarium products
-    const dummyProducts = [
+    // 3. Category definitions and templates to generate 20 items per category
+    const categoriesData = [
       {
-        productName: 'Neon Tetra Schooling Pack (10 Fish)',
-        description: 'A beautiful pack of 10 active, healthy Neon Tetra fish. Perfect for community planted aquariums.',
         category: 'Aquarium Fish',
-        price: 350,
-        stock: 25,
-        images: ['https://images.unsplash.com/photo-1534080391025-09795d197360?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.8,
-        totalReviews: 12,
-        isReturnable: true
+        image: 'https://images.unsplash.com/photo-1524704654690-b56c05c78a02?w=800',
+        items: [
+          'Red Cap Oranda Goldfish', 'Neon Tetra Schooling Pack', 'Royal Blue Betta Fish', 'Vibrant Blue Discus Fish', 
+          'Red Cherry Shrimp Pack', 'Yellow Tang Marine Fish', 'Angelfish Classic Scalare', 'Fancy Guppy Breeding Pair', 
+          'Zebra Danio Schooling Pack', 'Harlequin Rasbora School', 'Tiger Barb Active Group', 'Corydoras Bronze Catfish', 
+          'Bristlenose Pleco Algae Eater', 'Black Moor Fancy Goldfish', 'White Cloud Mountain Minnow', 'Gourami Pearl Flame', 
+          'German Blue Ram Cichlid', 'Kribensis Spawning Pair', 'Cherry Barb Schooling Group', 'Clown Loach Bottom Dweller'
+        ]
       },
       {
-        productName: 'Royal Blue Betta Fish (Male)',
-        description: 'Vibrant, hand-selected male Siamese Fighting Fish. Stunning show-quality fins and colors.',
-        category: 'Aquarium Fish',
-        price: 450,
-        stock: 15,
-        images: ['https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.7,
-        totalReviews: 9,
-        isReturnable: true
+        category: 'Fish Food',
+        image: 'https://images.unsplash.com/photo-1534080391025-09795d197360?w=800',
+        items: [
+          'Premium Spirulina Pellets', 'Tropical Fish Flake Food', 'Algae Wafers for Plecos', 'Freeze-Dried Bloodworms', 
+          'Tubifex Worm Feeding Blocks', 'Goldfish Floating Pellets', 'Betta Micro-Granules', 'Cichlid Floating Sticks', 
+          'Baby Fish Liquid Fry Food', 'Color Enhancing Flake Pack', 'Garlic-Infused Pellet Diet', 'Slow-Sinking Crumble Food', 
+          'Marine Fish Gourmet Flakes', 'Shrimp & Lobster Sinkers', 'Monster Fish Carnivore Diet', 'Holiday Weekend Feeder', 
+          'Bottom Feeder Spawning Wafers', 'Micropellets for Nano Fish', 'Krill-Rich Growth Formula', 'Daphnia Nutrient Pack'
+        ]
       },
       {
-        productName: 'Premium Red Oranda Goldfish',
-        description: 'High-quality Oranda goldfish with a well-developed red wen. Calm temperament and highly active.',
-        category: 'Aquarium Fish',
-        price: 850,
-        stock: 10,
-        images: ['https://images.unsplash.com/photo-1524704654690-b56c05c78a02?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.9,
-        totalReviews: 14,
-        isReturnable: true
-      },
-      {
-        productName: 'Vibrant Blue Discus Fish (Medium)',
-        description: 'Spectacular, farm-bred Discus fish with brilliant blue patterning. Highly sought after by aquarists.',
-        category: 'Aquarium Fish',
-        price: 1800,
-        stock: 6,
-        images: ['https://images.unsplash.com/photo-1572111504021-40afd33e15dd?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.9,
-        totalReviews: 7,
-        isReturnable: true
-      },
-      {
-        productName: 'Red Cherry Shrimp (Pack of 10)',
-        description: 'Active and healthy freshwater dwarf shrimp. Excellent scavengers for clean aquariums and nano tanks.',
-        category: 'Aquarium Fish',
-        price: 290,
-        stock: 30,
-        images: ['https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.8,
-        totalReviews: 11,
-        isReturnable: true
-      },
-      {
-        productName: 'Anubias Barteri on Driftwood',
-        description: 'Lush green aquatic plant pre-attached to natural driftwood. Easy to maintain and hardy.',
-        category: 'Aquarium Plants',
-        price: 450,
-        stock: 12,
-        images: ['https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.6,
-        totalReviews: 8,
-        isReturnable: true
-      },
-      {
-        productName: 'Ultra-Clear Rimless Glass Tank (60L)',
-        description: 'Rimless low-iron glass aquarium. Provides stunning high-definition views of your aquascape.',
         category: 'Aquarium Tanks',
-        price: 4800,
-        stock: 5,
-        images: ['https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.9,
-        totalReviews: 15,
-        isReturnable: false
+        image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800',
+        items: [
+          'Ultra-Clear Rimless Tank 60L', 'Nano Glass Cube Tank 15L', 'Rimless Low-Iron Tank 30L', 'Landscape Aquascape Tank 90L', 
+          'Curved Glass Panoramic Tank 40L', 'Premium Betta Compartment Tank', 'Double Stack Breeding Rack Tank', 'Shallow Frag Marine Tank 50L', 
+          'Hexagonal Classic Tank 35L', 'Acrylic Safe Aquaponic Tank', 'Rimless Peninsula Tank 120L', 'Extra Deep Planted Tank 150L', 
+          'Nursery Separation Net Tank', 'Desktop Office Nano Tank 10L', 'Bowfront Stylish Aquarium 80L', 'Wall-Mounted Portrait Tank', 
+          'Low-Iron Rimless Cube 45L', 'High-Definition Showcase Tank 200L', 'Mini Desktop Terrarium-Aquarium', 'Heavy Duty Acrylic Sump Tank'
+        ]
       },
       {
-        productName: 'Vibrant Yellow Tang Marine Fish',
-        description: 'Stunning reef-safe saltwater marine tang. Active swimmer with a brilliant yellow coloring.',
-        category: 'Aquarium Fish',
-        price: 2500,
-        stock: 8,
-        images: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800'],
-        dealerId: dealerUser._id,
-        averageRating: 4.8,
-        totalReviews: 10,
-        isReturnable: true
+        category: 'Aquarium Filters',
+        image: 'https://images.unsplash.com/photo-1620694563886-c3a80ee55f41?w=800',
+        items: [
+          'Hang-On-Back Slim Filter 50', 'Multi-Stage Canister Filter 150', 'Biochemical Sponge Filter Small', 'Biochemical Sponge Filter Large', 
+          'Surface Oil Film Skimmer', 'Internal Corner Whisper Filter', 'Undergravel Filtration Plate 60', 'Fluidized Bed Moving Media Filter', 
+          'UV Sterilizer Submersible Pump', 'Biomax Ceramic Media Ring Pack', 'Activated Carbon Filter Media', 'Pre-Filter Protective Sponge', 
+          'Power Filter Replacement Cartridge', 'Heavy Duty Canister Filter 400', 'Top Filter Overhead Box System', 'Silent Air Pump Single Outlet', 
+          'Silent Air Pump Dual Outlet', 'Non-Return Check Valve Kit', 'Biochemical Filter Floss Roll', 'Hang-on Canister Flow Filter'
+        ]
+      },
+      {
+        category: 'Aquarium Lights',
+        image: 'https://images.unsplash.com/photo-1508962914676-134849a727f0?w=800',
+        items: [
+          'Smart LED Plant Grow Light 60', 'Clip-on Nano Aquarium Light', 'Full Spectrum Slim LED Bar 90', 'RGB Submersible Tube Light', 
+          'WiFi Programmable Sunrise LED', 'Marine Reef High-Lumen Light', 'Dual-Channel LED Controller Timer', 'Pendant Aquascape Light 50W', 
+          'Submersible Accent Blue LED', 'Clamp-on Spotlight for Betta', 'Plant Growing Pink LED Bar', 'Mini USB Desktop Light', 
+          'High Intensity T5 Replacement LED', 'Reef Coral Growth Light Bar', 'Auto Dimming Sunrise Sunset LED', 'Waterproof Night Moon LED', 
+          'Deep Marine Blue Reef Panel', 'Slim Profile Aluminum LED 120', 'Multi-color Remote Controlled Light', 'Heavy Duty Hanging Light Kit'
+        ]
+      },
+      {
+        category: 'Aquarium Decorations',
+        image: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?w=800',
+        items: [
+          'Natural Driftwood Tree Branch', 'Dragon Stone Aquascaping Rock', 'Seiryu Hardscape Stone Pack', 'Ceramic Breeding Cave Tube', 
+          'Sunken Pirate Ship Wreck', 'Medieval Castle Ruins Medium', 'Zen Buddha Statue Ornament', 'Ancient Roman Pillar Ruins', 
+          'Resin Tree Trunk Hiding Spot', 'Floating Avatar Rock Island', 'Clay Spawning Cone for Discus', 'Sunken Submarine Model', 
+          'Natural Lava Rock Pack 1kg', 'Mopani Hardwood Driftwood', 'Spider Wood Branch Large', 'Artificial Coral Reef Decor', 
+          'Ceramic Shrimp Dome Shelter', 'Decorative Colored Pebbles 2kg', 'Ancient Greek Colosseum Decor', 'Glow-in-the-dark Resin Jellyfish'
+        ]
+      },
+      {
+        category: 'Aquarium Plants',
+        image: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=800',
+        items: [
+          'Anubias Nana Tissue Culture Cup', 'Java Fern Hardy Bunch', 'Java Moss Spawning Mat', 'Amazon Sword Centerpiece Plant', 
+          'Vallisneria Spiralis Tall Bunch', 'Cryptocoryne Wendtii Brown', 'Rotala Rotundifolia Stem Pack', 'Ludwigia Repens Red Plant', 
+          'Monte Carlo Carpet Plant Cup', 'Dwarf Hairgrass Easy Carpet', 'Christmas Moss Spawning Cover', 'Frogbit Floating Plants Pack', 
+          'Tiger Lotus Bulb Red Leaf', 'Dwarf Sagittaria Groundcover', 'Bacopa Monnieri Stem Group', 'Windelov Crested Java Fern', 
+          'Hornwort Bunch oxygenator', 'Elodea Densa Coldwater Plant', 'Water Lettuce Floating Cover', 'Buccaphelandra Rare Tissue Cup'
+        ]
+      },
+      {
+        category: 'Aquarium Accessories',
+        image: 'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=800',
+        items: [
+          'Magnetic Glass Cleaner Squeegee', 'Gravel Vacuum Siphon Medium', 'Long Stainless Steel Tweezers 27', 'Long Aquascaping Scissors 25', 
+          'Digital Waterproof Thermometer', 'Floating Glass Thermometer', 'Fine Mesh Fish Net 3 inch', 'Fine Mesh Fish Net 6 inch', 
+          'Glass CO2 Diffuser Reactor', 'CO2 Bubble Counter U-Pipe', 'Silicone Air Tubing Line 5m', 'Plastic Water Pipette 30ml', 
+          'Floating Food Feeding Ring', 'Automatic Daily Fish Feeder', 'Aquarium Multi-Water Test Kit', 'High-Grade Filter Media Bag', 
+          'Algae Scraper Extension Tool', 'Airline Regulator Air Valve', 'CO2 Check Indicator Drop Checker', 'Water Conditioner Dechlorinator'
+        ]
       }
     ];
 
-    // Delete any previous products with matching names to avoid duplicates
-    const names = dummyProducts.map(p => p.productName);
-    // Also delete the previous 5 dummy product names to keep it clean
-    const oldNames = ['Neon Tetra Schooling Pack', 'Premium Spirulina Pellets', 'Ultra-Clear Rimless Glass Tank', 'Smart LED Aquascaping Light', 'Java Moss Tissue Culture Cup'];
-    await Product.deleteMany({ productName: { $in: [...names, ...oldNames] } });
+    const seededProducts = [];
 
-    // Insert new dummy products
-    const inserted = await Product.insertMany(dummyProducts);
-    console.log(`Successfully seeded ${inserted.length} real aquarium products!`);
+    // Generate products programmatically
+    categoriesData.forEach((catObj) => {
+      catObj.items.forEach((itemName, index) => {
+        // Construct realistic details
+        const basePrice = 100 + (index * 25);
+        const price = catObj.category.includes('Tanks') ? basePrice * 8 : basePrice;
+        
+        seededProducts.push({
+          productName: itemName,
+          description: `High-quality ${itemName} for professional aquarists. Carefully selected, highly durable, and designed to improve your aquarium experience.`,
+          category: catObj.category,
+          price: price,
+          stock: 10 + (index * 2),
+          images: [catObj.image],
+          dealerId: dealerUser._id,
+          averageRating: 0,
+          totalReviews: 0,
+          isReturnable: index % 3 !== 0
+        });
+      });
+    });
+
+    console.log(`Clearing all existing products from database...`);
+    await Product.deleteMany({});
+
+    console.log(`Seeding ${seededProducts.length} products to database (20 products per category)...`);
+    const inserted = await Product.insertMany(seededProducts);
+    console.log(`Successfully seeded ${inserted.length} products! All reviews and ratings are reset to 0.`);
     process.exit(0);
   })
   .catch((err) => {
