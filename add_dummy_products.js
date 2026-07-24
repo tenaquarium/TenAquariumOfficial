@@ -114,7 +114,7 @@ mongoose.connect(MONGO_URI)
       },
       {
         category: 'Aquarium Tanks',
-        image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800',
+        image: 'https://images.unsplash.com/photo-1508962914676-134849a727f0?w=800',
         items: [
           'Ultra-Clear Rimless Tank 60L', 'Nano Glass Cube Tank 15L', 'Rimless Low-Iron Tank 30L', 'Landscape Aquascape Tank 90L', 
           'Curved Glass Panoramic Tank 40L', 'Premium Betta Compartment Tank', 'Double Stack Breeding Rack Tank', 'Shallow Frag Marine Tank 50L', 
@@ -214,7 +214,7 @@ mongoose.connect(MONGO_URI)
       }
       
       if (category === 'Aquarium Tanks') {
-        if (n.includes('cube') || n.includes('nano')) return 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800';
+        if (n.includes('cube') || n.includes('nano')) return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
         return 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800';
       }
       
@@ -243,7 +243,7 @@ mongoose.connect(MONGO_URI)
       if (category === 'Custom Tank Setup') {
         if (n.includes('marine') || n.includes('reef')) return 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800';
         if (n.includes('office') || n.includes('desktop')) return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
-        return 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800';
+        return 'https://images.unsplash.com/photo-1572111504021-40afd33e15dd?w=800';
       }
       
       return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
