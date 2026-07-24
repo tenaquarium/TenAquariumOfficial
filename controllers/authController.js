@@ -129,6 +129,7 @@ const registerDealer = async (req, res) => {
         logo: logo || '',
         description: description || '',
         msmeCertificate: msmeCertificate || '',
+        selectedDocType: req.body.selectedDocType || 'msme',
         courierServices: req.body.courierServices,
         approvalStatus: 'pending',
       });
@@ -270,6 +271,7 @@ const updateUserProfile = async (req, res) => {
           dealer.logo = req.body.logo !== undefined ? req.body.logo : dealer.logo;
           dealer.description = req.body.description !== undefined ? req.body.description : dealer.description;
           dealer.msmeCertificate = req.body.msmeCertificate !== undefined ? req.body.msmeCertificate : dealer.msmeCertificate;
+          dealer.selectedDocType = req.body.selectedDocType !== undefined ? req.body.selectedDocType : dealer.selectedDocType;
           dealer.googlePlaceId = req.body.googlePlaceId !== undefined ? extractPlaceId(req.body.googlePlaceId) : dealer.googlePlaceId;
           dealer.courierServices = req.body.courierServices !== undefined ? req.body.courierServices : dealer.courierServices;
           

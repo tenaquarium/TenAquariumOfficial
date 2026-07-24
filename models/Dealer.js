@@ -45,6 +45,10 @@ const dealerSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    selectedDocType: {
+      type: String,
+      default: 'msme',
+    },
     googlePlaceId: {
       type: String,
       default: '',
