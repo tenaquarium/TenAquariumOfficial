@@ -191,6 +191,64 @@ mongoose.connect(MONGO_URI)
       }
     ];
 
+    const getProductImage = (name, category) => {
+      const n = name.toLowerCase();
+      
+      if (category === 'Aquarium Fish') {
+        if (n.includes('goldfish')) return 'https://images.unsplash.com/photo-1524704654690-b56c05c78a02?w=800';
+        if (n.includes('betta')) return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
+        if (n.includes('tetra')) return 'https://images.unsplash.com/photo-1534080391025-09795d197360?w=800';
+        if (n.includes('discus')) return 'https://images.unsplash.com/photo-1572111504021-40afd33e15dd?w=800';
+        if (n.includes('shrimp')) return 'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=800';
+        if (n.includes('tang')) return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800';
+        if (n.includes('angelfish')) return 'https://images.unsplash.com/photo-1608976478546-d249f05e3b1c?w=800';
+        if (n.includes('guppy')) return 'https://images.unsplash.com/photo-1617462152865-f4864fa9c1ec?w=800';
+        return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
+      }
+      
+      if (category === 'Fish Food') {
+        if (n.includes('spirulina') || n.includes('algae') || n.includes('wafers')) {
+          return 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=800';
+        }
+        return 'https://images.unsplash.com/photo-1516715094727-ec48be335d79?w=800';
+      }
+      
+      if (category === 'Aquarium Tanks') {
+        if (n.includes('cube') || n.includes('nano')) return 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800';
+        return 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800';
+      }
+      
+      if (category === 'Aquarium Filters') {
+        return 'https://images.unsplash.com/photo-1620694563886-c3a80ee55f41?w=800';
+      }
+      
+      if (category === 'Aquarium Lights') {
+        return 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800';
+      }
+      
+      if (category === 'Aquarium Decorations') {
+        if (n.includes('wood') || n.includes('driftwood')) return 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=800';
+        return 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?w=800';
+      }
+      
+      if (category === 'Aquarium Plants') {
+        return 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=800';
+      }
+      
+      if (category === 'Aquarium Accessories') {
+        if (n.includes('tweezers') || n.includes('scissors')) return 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800';
+        return 'https://images.unsplash.com/photo-1595341888016-a392ef81b7de?w=800';
+      }
+      
+      if (category === 'Custom Tank Setup') {
+        if (n.includes('marine') || n.includes('reef')) return 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800';
+        if (n.includes('office') || n.includes('desktop')) return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
+        return 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800';
+      }
+      
+      return 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=800';
+    };
+
     const seededProducts = [];
 
     // Generate products programmatically
@@ -206,7 +264,7 @@ mongoose.connect(MONGO_URI)
           category: catObj.category,
           price: price,
           stock: 10 + (index * 2),
-          images: [catObj.image],
+          images: [getProductImage(itemName, catObj.category)],
           dealerId: dealerUser._id,
           averageRating: 0,
           totalReviews: 0,
