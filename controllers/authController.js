@@ -439,6 +439,12 @@ const sendOtp = async (req, res) => {
           </div>
           <p style="margin-top: 20px; font-size: 12px; color: #64748b;">This OTP is valid for 10 minutes. If you did not request this, please ignore this email.</p>
         </div>`,
+        headers: {
+          'Auto-Submitted': 'auto-generated',
+          'X-Auto-Response-Loop': 'true',
+          'Importance': 'high',
+          'X-Priority': '1'
+        }
       });
     } else {
       // Ethereal fallback

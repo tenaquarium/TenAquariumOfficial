@@ -178,6 +178,7 @@ const sendInvoiceEmail = async (order, customerEmail) => {
       from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM'}" <${process.env.SMTP_USER}>`,
       to: customerEmail,
       subject: `Your Invoice for Order #${orderDisplayId} - TENAQUARIUM`,
+      text: `Hello,\n\nYour order #${orderDisplayId} has been successfully processed. We have generated and attached your invoice as a PDF file to this email.\n\nTotal Amount Paid: Rs ${order.totalAmount.toLocaleString()}\n\nThank you for shopping with TENAQUARIUM!`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
           <div style="text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px;">
@@ -209,6 +210,12 @@ const sendInvoiceEmail = async (order, customerEmail) => {
           <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">TENAQUARIUM Inc. Salem, Tamil Nadu, India.</p>
         </div>
       `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'normal',
+        'X-Priority': '3'
+      },
       attachments: [
         {
           filename: `Invoice-${orderDisplayId}.pdf`,
@@ -249,6 +256,7 @@ const sendStatusEmail = async (order, customerEmail, status) => {
       subject: status === 'Refund Completed'
         ? `Refund Confirmed for Order #${orderDisplayId} - TENAQUARIUM`
         : `Order #${orderDisplayId} Status Update: ${status} - TENAQUARIUM`,
+      text: `Hello,\n\nThe status of your Order #${orderDisplayId} has been updated to: ${status}.\n\nThank you for shopping with TENAQUARIUM!`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
           <div style="text-align: center; border-bottom: 2px solid #059669; padding-bottom: 15px; margin-bottom: 20px;">
@@ -280,6 +288,12 @@ const sendStatusEmail = async (order, customerEmail, status) => {
           <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">TENAQUARIUM Inc. Salem, Tamil Nadu, India.</p>
         </div>
       `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'normal',
+        'X-Priority': '3'
+      }
     };
 
     await transporter.sendMail(mailOptions);
