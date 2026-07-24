@@ -136,7 +136,7 @@ const registerDealer = async (req, res) => {
       // Send SMS notification to Admin
       try {
         const { sendSMS } = require('../utils/sms');
-        const baseUrl = process.env.SMS_REDIRECT_BASE_URL || `http://${req.get('host')}`;
+        const baseUrl = process.env.SMS_REDIRECT_BASE_URL || 'https://ten-aquarium-official.vercel.app';
         const message = `New Dealer Registered: ${businessName} (Owner: ${ownerName})\n` +
           `Approve: ${baseUrl}/api/dealers/sms-approve/${dealer._id}\n` +
           `Reject: ${baseUrl}/api/dealers/sms-reject/${dealer._id}`;
