@@ -177,6 +177,17 @@ mongoose.connect(MONGO_URI)
           'Floating Food Feeding Ring', 'Automatic Daily Fish Feeder', 'Aquarium Multi-Water Test Kit', 'High-Grade Filter Media Bag', 
           'Algae Scraper Extension Tool', 'Airline Regulator Air Valve', 'CO2 Check Indicator Drop Checker', 'Water Conditioner Dechlorinator'
         ]
+      },
+      {
+        category: 'Custom Tank Setup',
+        image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800',
+        items: [
+          'Planted Forest Aquascape Setup', 'Vibrant Marine Coral Reef Setup', 'Minimalist Office Desktop Tank', 'High-Tech Riparium Moss Setup',
+          'African Cichlid Rocky Aquascape', 'Amazonian Biotope Riverbend Setup', 'Nano Shrimp Carpet Grass Garden', 'Bonsai Driftwood Hardscape Design',
+          'Jungle Style Tall Planted Aquarium', 'Ultra-Clear Shallow Frag Reef Tank', 'Walstad Natural Soil Planted Bowl', 'Zen Iwagumi Grassland Layout',
+          'Red Dragon Stone Mountain Hardscape', 'Seiryu Stone Canyon Layout Setup', 'Luxury Peninsula Divider Aquarium', 'Cubic Moss Wall Shrimp Sanctuary',
+          'Temperate River Stream Flow Tank', 'Paludarium Floating Land Area Tank', 'Custom Executive Sump Filter Tank', 'Monster Predator Bare Bottom Setup'
+        ]
       }
     ];
 
@@ -187,11 +198,11 @@ mongoose.connect(MONGO_URI)
       catObj.items.forEach((itemName, index) => {
         // Construct realistic details
         const basePrice = 100 + (index * 25);
-        const price = catObj.category.includes('Tanks') ? basePrice * 8 : basePrice;
+        const price = catObj.category.includes('Tanks') || catObj.category.includes('Setup') ? basePrice * 8 : basePrice;
         
         seededProducts.push({
           productName: itemName,
-          description: `High-quality ${itemName} for professional aquarists. Carefully selected, highly durable, and designed to improve your aquarium experience.`,
+          description: `High-quality professional ${itemName}. Tailored carefully, installed by certified local experts, and designed to improve your lifestyle and stress levels.`,
           category: catObj.category,
           price: price,
           stock: 10 + (index * 2),
