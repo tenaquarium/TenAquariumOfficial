@@ -239,7 +239,7 @@ const submitPaymentProof = async (req, res) => {
     }
 
     // Send real urgent SMS notification to Admin in the background
-    const baseUrl = 'https://www.tenaquarium.com';
+    const baseUrl = 'http://www.tenaquarium.com';
     const smsMessage = `Tenaq: Proof #${order._id.toString().slice(-6)} (₹${order.totalAmount.toFixed(0)}). Actions: ${baseUrl}/api/orders/a/${order._id}`;
     sendSMS(smsMessage).catch((smsErr) => {
       console.error('Error sending proof submitted SMS to admin:', smsErr.message);
