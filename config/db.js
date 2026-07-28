@@ -4,6 +4,10 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://tenaquarium_db_user:tenaquariumdb@tenaquariumcluster.1tpyeeh.mongodb.net/tenaquarium');
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    
+    // Automatically seed default categories if none exist
+    const { seedDefaultCategories } = require('../controllers/categoryController');
+    await seedDefaultCategories();
   } catch (error) {
     console.error(`Error connecting to MongoDB: ${error.message}`);
     process.exit(1);
