@@ -38,6 +38,20 @@ const userSchema = new mongoose.Schema(
       enum: ['active', 'blocked'],
       default: 'active',
     },
+    loginOtp: {
+      type: String,
+    },
+    loginOtpExpires: {
+      type: Date,
+    },
+    activeSessions: [
+      {
+        token: { type: String, required: true },
+        deviceInfo: { type: String },
+        ip: { type: String },
+        lastActive: { type: Date, default: Date.now }
+      }
+    ],
   },
   {
     timestamps: true,

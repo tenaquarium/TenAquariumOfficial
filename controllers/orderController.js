@@ -44,8 +44,9 @@ const createOrder = async (req, res) => {
       });
     }
 
-    const chargeVal = Number(deliveryCharge) || 0;
-    const finalTotalAmount = subtotalAmount + chargeVal;
+    const chargeVal = 0; // Free shipping
+    const packingVal = 40; // Flat packing charge
+    const finalTotalAmount = subtotalAmount + packingVal;
 
     // Generate Custom Sequential Order ID: YYMMDDCCount
     const now = new Date();
@@ -69,8 +70,9 @@ const createOrder = async (req, res) => {
       paymentMethod,
       paymentStatus: 'pending',
       orderStatus: 'Processing',
-      courierService: courierService || '',
+      courierService: 'Free Shipping',
       deliveryCharge: chargeVal,
+      packingCharge: packingVal,
       customOrderId
     };
 
@@ -239,8 +241,8 @@ const submitPaymentProof = async (req, res) => {
     }
 
     // Send real urgent SMS notification to Admin in the background
-    const baseUrl = 'http://www.tenaquarium.com';
-    const smsMessage = `Tenaq: Proof #${order._id.toString().slice(-6)} (₹${order.totalAmount.toFixed(0)}). Actions: ${baseUrl}/api/orders/a/${order._id}`;
+    const baseUrl = 'https://www.tenaquarium.com';
+    const smsMessage = `TENAQUARIUM: Verify payment of ₹${order.totalAmount.toFixed(0)} for Order #${order._id.toString().slice(-6)}: Received or Not? Click: ${baseUrl}/api/orders/a/${order._id}`;
     sendSMS(smsMessage).catch((smsErr) => {
       console.error('Error sending proof submitted SMS to admin:', smsErr.message);
     });

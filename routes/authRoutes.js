@@ -4,6 +4,7 @@ const {
   registerCustomer,
   registerDealer,
   loginUser,
+  verifyAdminOtp,
   getUserProfile,
   updateUserProfile,
   forgotPassword,
@@ -16,6 +17,7 @@ const { protect } = require('../middleware/authMiddleware');
 router.post('/register', registerCustomer);
 router.post('/register-dealer', registerDealer);
 router.post('/login', loginUser);
+router.post('/verify-admin-otp', verifyAdminOtp);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.post('/send-otp', sendOtp);

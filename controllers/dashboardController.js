@@ -9,7 +9,7 @@ const Order = require('../models/Order');
 const getAdminStats = async (req, res) => {
   try {
     const totalCustomers = await User.countDocuments({ role: 'customer' });
-    const totalDealers = await Dealer.countDocuments({});
+    const totalDealers = await Dealer.countDocuments({ approvalStatus: 'approved' });
     const totalProducts = await Product.countDocuments({});
     
     // Calculate total orders and revenue

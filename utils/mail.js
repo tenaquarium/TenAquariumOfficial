@@ -88,21 +88,29 @@ const generateInvoicePDF = (order) => {
       currentY += 22;
     });
 
-    // Subtotal, Delivery and Total
+    // Subtotal, Packing, Delivery and Total
     doc.strokeColor('#cccccc')
        .lineWidth(1)
        .moveTo(50, currentY)
        .lineTo(550, currentY)
        .stroke();
 
+    const pCharge = order.packingCharge !== undefined ? order.packingCharge : (order.deliveryCharge ? 0 : 40);
+    const dCharge = order.deliveryCharge || 0;
+    const sub = order.totalAmount - dCharge - pCharge;
+
     currentY += 8;
     doc.fillColor('#333333').fontSize(9).font('Helvetica')
        .text('Subtotal:', 350, currentY, { align: 'right', width: 100 })
-       .text(`Rs ${(order.totalAmount - (order.deliveryCharge || 0)).toLocaleString()}`, 470, currentY, { align: 'right', width: 80 });
+       .text(`Rs ${sub.toLocaleString()}`, 470, currentY, { align: 'right', width: 80 });
 
     currentY += 15;
-    doc.text(`Delivery Charge (${order.courierService || 'Courier'}):`, 300, currentY, { align: 'right', width: 150 })
-       .text(`Rs ${(order.deliveryCharge || 0).toLocaleString()}`, 470, currentY, { align: 'right', width: 80 });
+    doc.text('Packing Charge:', 350, currentY, { align: 'right', width: 100 })
+       .text(`Rs ${pCharge.toLocaleString()}`, 470, currentY, { align: 'right', width: 80 });
+
+    currentY += 15;
+    doc.text('Shipping / Delivery:', 350, currentY, { align: 'right', width: 100 })
+       .text(dCharge > 0 ? `Rs ${dCharge.toLocaleString()}` : 'Free', 470, currentY, { align: 'right', width: 80 });
 
     currentY += 18;
     doc.fillColor('#059669').fontSize(11).font('Helvetica-Bold')
@@ -303,7 +311,83 @@ const sendStatusEmail = async (order, customerEmail, status) => {
   }
 };
 
+const sendAdminOtpEmail = async (email, otp) => {
+  try {
+    const recipient = email.toLowerCase() === 'admin457@tenaquarium.com' ? 'tenaquarium@gmail.com' : email;
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM Verification'}" <${process.env.SMTP_USER}>`,
+      to: recipient,
+      subject: `Admin Login Verification OTP - TENAQUARIUM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <h2 style="color: #0284c7; margin-top: 0; font-size: 20px; border-bottom: 2px solid #0284c7; padding-bottom: 10px;">Admin Login Verification</h2>
+          <p style="color: #334155; font-size: 15px; line-height: 1.5;">Please use the following 6-digit One-Time Password (OTP) to complete your admin login verification:</p>
+          <div style="font-size: 28px; font-weight: bold; letter-spacing: 4px; padding: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; display: inline-block; color: #15803d; border-radius: 6px; margin: 10px 0;">
+            ${otp}
+          </div>
+          <p style="margin-top: 20px; font-size: 12px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 10px;">This OTP is valid for 10 minutes. If you did not initiate this login, please change your password immediately.</p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+    await transporter.sendMail(mailOptions);
+    console.log(`Admin login OTP email sent to ${recipient} (originally: ${email})`);
+  } catch (error) {
+    console.error(`Error sending admin OTP email:`, error.message);
+  }
+};
+
+const sendAdminLoginDeviceAlert = async (email, ip, userAgent, activeSessionsCount, activeSessions) => {
+  try {
+    const recipient = email.toLowerCase() === 'admin457@tenaquarium.com' ? 'tenaquarium@gmail.com' : email;
+    const sessionListHtml = activeSessions.map((s, index) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
+        <td style="padding: 8px 0; color: #334155;"><strong>Device ${index + 1}:</strong> ${s.deviceInfo || 'Unknown'}</td>
+        <td style="padding: 8px 0; text-align: right; color: #64748b;">IP: ${s.ip || 'Unknown'}</td>
+      </tr>
+    `).join('');
+
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM Security'}" <${process.env.SMTP_USER}>`,
+      to: recipient,
+      subject: `🛡️ Security Alert: New Admin Login Verified`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fda4af; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <h2 style="color: #be123c; margin-top: 0; font-size: 20px; border-bottom: 2px solid #fda4af; padding-bottom: 10px;">🛡️ Security Alert: New Login Verified</h2>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">A new admin login was successfully verified from the following device details:</p>
+          <div style="background-color: #fff1f2; border: 1px solid #ffe4e6; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="margin-bottom: 6px; font-size: 14px; color: #4c0519;"><strong>IP Address:</strong> ${ip}</div>
+            <div style="font-size: 14px; color: #4c0519; word-break: break-all;"><strong>User-Agent:</strong> ${userAgent}</div>
+          </div>
+          <h4 style="color: #1e293b; margin-bottom: 10px; font-size: 15px;">Your Active Logged-in Devices (${activeSessionsCount})</h4>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            ${sessionListHtml}
+          </table>
+          <p style="font-size: 12px; color: #64748b; margin-top: 20px; line-height: 1.5; border-top: 1px dashed #e2e8f0; padding-top: 10px;">If this was not you, your credentials might be compromised. Please revoke all sessions and change your password immediately.</p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+    await transporter.sendMail(mailOptions);
+    console.log(`Admin login alert email sent to ${recipient} (originally: ${email})`);
+  } catch (error) {
+    console.error(`Error sending admin device alert email:`, error.message);
+  }
+};
+
 module.exports = {
   sendInvoiceEmail,
   sendStatusEmail,
+  sendAdminOtpEmail,
+  sendAdminLoginDeviceAlert,
 };

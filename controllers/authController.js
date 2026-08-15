@@ -178,6 +178,23 @@ const loginUser = async (req, res) => {
         return res.status(403).json({ message: 'Your account is blocked. Please contact admin.' });
       }
 
+      // Check if user is admin - intercept for OTP verification!
+      if (user.role === 'admin') {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.loginOtp = otp;
+        user.loginOtpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await user.save();
+
+        const { sendAdminOtpEmail } = require('../utils/mail');
+        await sendAdminOtpEmail(user.email, otp);
+
+        return res.json({
+          requireOtp: true,
+          email: user.email,
+          message: 'OTP verification code sent to admin verification email inbox.'
+        });
+      }
+
       // If dealer, fetch dealer profile
       let dealerProfile = null;
       if (user.role === 'dealer') {
@@ -509,10 +526,84 @@ const checkEmailExist = async (req, res) => {
   }
 };
 
+// @desc    Verify admin OTP and login
+// @route   POST /api/auth/verify-admin-otp
+// @access  Public
+const verifyAdminOtp = async (req, res) => {
+  const { email, password, otp, deviceInfo } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({ message: 'Unauthorized access' });
+    }
+
+    if (!(await user.matchPassword(password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    if (user.status === 'blocked') {
+      return res.status(403).json({ message: 'Your account is blocked.' });
+    }
+
+    // Verify OTP
+    if (!user.loginOtp || user.loginOtp !== otp || !user.loginOtpExpires || user.loginOtpExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP verification code.' });
+    }
+
+    // Clear OTP after successful use
+    user.loginOtp = undefined;
+    user.loginOtpExpires = undefined;
+
+    // Generate token
+    const token = generateToken(user._id);
+
+    // Save session
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown IP';
+    const cleanIp = typeof ip === 'string' && ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    const cleanDeviceInfo = deviceInfo || req.headers['user-agent'] || 'Unknown Device';
+
+    if (!user.activeSessions) {
+      user.activeSessions = [];
+    }
+
+    // Push new session
+    user.activeSessions.push({
+      token,
+      deviceInfo: cleanDeviceInfo,
+      ip: cleanIp,
+      lastActive: new Date()
+    });
+
+    // Clean up expired sessions (older than 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    user.activeSessions = user.activeSessions.filter(s => s.lastActive >= thirtyDaysAgo);
+
+    await user.save();
+
+    // Send device tracking email alert
+    const { sendAdminLoginDeviceAlert } = require('../utils/mail');
+    await sendAdminLoginDeviceAlert(user.email, cleanIp, cleanDeviceInfo, user.activeSessions.length, user.activeSessions);
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.status,
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerCustomer,
   registerDealer,
   loginUser,
+  verifyAdminOtp,
   getUserProfile,
   updateUserProfile,
   forgotPassword,

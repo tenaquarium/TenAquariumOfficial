@@ -87,6 +87,10 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    packingCharge: {
+      type: Number,
+      default: 40,
+    },
     trackingNumber: {
       type: String,
       default: '',
