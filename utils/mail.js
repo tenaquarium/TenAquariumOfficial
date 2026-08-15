@@ -21,7 +21,8 @@ const generateInvoicePDF = (order) => {
     doc.on('error', (err) => reject(err));
 
     // Logo image!
-    const logoPath = "d:/anti_project/frontend/public/logo.png";
+    const path = require('path');
+    const logoPath = path.join(__dirname, 'logo.png');
     try {
       doc.image(logoPath, 50, 30, { width: 130 });
     } catch (err) {
