@@ -336,14 +336,17 @@ const forgotPassword = async (req, res) => {
       return res.status(404).json({ message: 'User with this email does not exist' });
     }
 
-    // In production, we'd send an email. For this project, we return a token and simulated link
     const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'tenaquarium_secret_key_12345', {
       expiresIn: '10m', // 10 minutes to reset
     });
 
+    const resetLink = `https://www.tenaquarium.com/#/reset-password?token=${resetToken}`;
+    const { sendResetPasswordEmail } = require('../utils/mail');
+    await sendResetPasswordEmail(user.email, resetLink);
+
     res.json({
-      message: 'Password reset link generated successfully.',
-      resetToken, // Returned directly to simulated frontend
+      message: 'Password reset link sent to your email successfully.',
+      resetToken, // Retained for fallback simulation / backward compatibility
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

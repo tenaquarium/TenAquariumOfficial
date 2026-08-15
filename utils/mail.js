@@ -386,9 +386,51 @@ const sendAdminLoginDeviceAlert = async (email, ip, userAgent, activeSessionsCou
   }
 };
 
+const sendResetPasswordEmail = async (email, resetLink) => {
+  try {
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM Security'}" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Password Reset Request - TENAQUARIUM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1e3a8a; margin: 0; font-size: 24px;">TENAQUARIUM</h2>
+          </div>
+          <h3 style="color: #1e3a8a; text-align: center; margin-bottom: 20px;">Reset Your Password</h3>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Hello,</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">We received a request to reset the password for your TENAQUARIUM account. Click the button below to choose a new password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}" style="background-color: #0284c7; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);">Reset Password</a>
+          </div>
+          <p style="color: #334155; font-size: 14px; line-height: 1.6;">If you did not request a password reset, please ignore this email. This link will expire in 10 minutes.</p>
+          <p style="color: #94a3b8; font-size: 12px; word-break: break-all; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+            If the button doesn't work, copy and paste this link in your browser:<br/>
+            <a href="${resetLink}" style="color: #0284c7; text-decoration: underline;">${resetLink}</a>
+          </p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`Password reset email sent successfully to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`Error sending password reset email to ${email}:`, error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   sendInvoiceEmail,
   sendStatusEmail,
   sendAdminOtpEmail,
   sendAdminLoginDeviceAlert,
+  sendResetPasswordEmail,
 };
