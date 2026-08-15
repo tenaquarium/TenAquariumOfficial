@@ -173,7 +173,7 @@ const submitPaymentProof = async (req, res) => {
       return res.status(400).json({ message: 'Payment window of 2 minutes has expired. Order cancelled.' });
     }
 
-    // Perform OCR Verification on paymentProofImage if present
+    // Perform Heuristic Verification on paymentProofImage if present
     if (paymentProofImage) {
       if (!paymentProofImage.startsWith('data:image/')) {
         return res.status(400).json({ message: 'Invalid file format. Please upload a valid image screenshot.' });
@@ -185,43 +185,6 @@ const submitPaymentProof = async (req, res) => {
 
       if (imageBuffer.length < 5000) {
         return res.status(400).json({ message: 'Uploaded file is too small to be a valid screenshot receipt.' });
-      }
-
-      try {
-        const Tesseract = require('tesseract.js');
-        const { data: { text } } = await Tesseract.recognize(
-          imageBuffer,
-          'eng'
-        );
-
-        const scannedText = (text || '').toLowerCase();
-
-        // Price Match Verification: Check if the bill's total amount is present in the scanned text
-        const cleanScannedText = scannedText.replace(/[\s,₹rs\-]/g, "");
-        const digitsOnly = scannedText.replace(/\D/g, "");
-
-        const targetIntStr = Math.floor(order.totalAmount).toString(); // e.g. "47"
-        const targetCentsStr = (Math.round((order.totalAmount % 1) * 100)).toString(); // e.g. "43"
-        const targetDecimalStr = order.totalAmount.toFixed(2); // e.g. "47.43"
-        const targetDigitsStr = targetDecimalStr.replace(/\D/g, ""); // e.g. "4743"
-
-        // Robust match options to allow for minor OCR readability errors (like misreading '.' or a digit)
-        const amountMatch = 
-          cleanScannedText.includes(targetIntStr) || 
-          cleanScannedText.includes(targetCentsStr) ||
-          digitsOnly.includes(targetDigitsStr) ||
-          digitsOnly.includes(targetIntStr) ||
-          scannedText.includes(targetDecimalStr) ||
-          scannedText.includes(targetIntStr);
-
-        if (!amountMatch) {
-          return res.status(400).json({
-            message: `Payment amount mismatch. The uploaded screenshot does not show the correct payment amount of ₹${order.totalAmount.toLocaleString()}. Please make sure you upload the correct transaction receipt for this order.`
-          });
-        }
-      } catch (ocrError) {
-        console.error('Tesseract OCR validation error (falling back to size/header heuristics):', ocrError.message);
-        // Fallback: If OCR library fails (e.g. offline node process), accept image based on metadata & size
       }
     }
 
