@@ -22,6 +22,15 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.post('/send-otp', sendOtp);
 router.post('/check-email', checkEmailExist);
+router.get('/test-sms-delivery', async (req, res) => {
+  try {
+    const { sendSMS } = require('../utils/sms');
+    const result = await sendSMS('TENAQUARIUM: Live SMS Diagnostic test message');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router
   .route('/profile')
