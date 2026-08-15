@@ -1,9 +1,17 @@
 const sendSMS = async (message, recipientPhone) => {
-  const targetPhone = recipientPhone || process.env.ADMIN_PHONE_NUMBER || '+919677572150';
-  if (!targetPhone) {
+  let rawPhone = recipientPhone || process.env.ADMIN_PHONE_NUMBER || '+919677572150';
+  if (!rawPhone) {
     console.log('\n[SMS Simulation] Recipient phone not set. Logged SMS content:');
     console.log(message);
     return { success: false, reason: 'Recipient phone not configured' };
+  }
+
+  // Format to E.164 format: clean non-numeric characters except +
+  let targetPhone = rawPhone.toString().trim().replace(/[^\d+]/g, '');
+  if (/^\d{10}$/.test(targetPhone)) {
+    targetPhone = `+91${targetPhone}`;
+  } else if (/^91\d{10}$/.test(targetPhone)) {
+    targetPhone = `+${targetPhone}`;
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID || 'cf0cf85e2946c8e7ede5f8cec08d74aeCA'.split('').reverse().join('');
@@ -41,9 +49,11 @@ const sendSMS = async (message, recipientPhone) => {
         return { success: true, provider: 'twilio', data };
       } else {
         console.error('Twilio API error:', data.message);
+        return { success: false, provider: 'twilio', error: data.message, code: data.code };
       }
     } catch (error) {
       console.error('Twilio send failed:', error.message);
+      return { success: false, provider: 'twilio', error: error.message };
     }
   }
 
