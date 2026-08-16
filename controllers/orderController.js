@@ -35,11 +35,29 @@ const createOrder = async (req, res) => {
         });
       }
 
-      subtotalAmount += product.price * item.quantity;
+      // Calculate discount and custom offer on the server side
+      const dealer = await Dealer.findOne({ userId: product.dealerId });
+      const discount = dealer ? dealer.discountPercentage || 0 : 0;
+      const customOfferText = dealer ? dealer.customOfferText || '' : '';
+
+      const unitPrice = product.price;
+      const discountedUnitPrice = discount > 0 ? unitPrice * (1 - discount / 100) : unitPrice;
+
+      let itemCost = discountedUnitPrice * item.quantity;
+
+      // Buy 3 Get 1 Free Check
+      const isBuy3Get1 = customOfferText.toLowerCase().includes('buy 3 get 1') || customOfferText.toLowerCase().includes('buy3 get1');
+      if (isBuy3Get1 && item.quantity >= 3) {
+        const freeCount = Math.floor(item.quantity / 3);
+        const billedQty = item.quantity - freeCount;
+        itemCost = discountedUnitPrice * billedQty;
+      }
+
+      subtotalAmount += itemCost;
       orderItems.push({
         productId: product._id,
         quantity: item.quantity,
-        price: product.price,
+        price: discountedUnitPrice, // Save actual paid discounted price
         dealerId: product.dealerId,
       });
     }
