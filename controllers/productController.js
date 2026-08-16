@@ -59,6 +59,8 @@ const getProducts = async (req, res) => {
         apiQuery = apiQuery.sort({ createdAt: -1 });
       } else if (sort === 'bestRating') {
         apiQuery = apiQuery.sort({ averageRating: -1 });
+      } else if (sort === 'popular') {
+        apiQuery = apiQuery.sort({ soldCount: -1, averageRating: -1 });
       } else {
         apiQuery = apiQuery.sort({ createdAt: -1 });
       }
