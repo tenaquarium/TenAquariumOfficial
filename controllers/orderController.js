@@ -103,7 +103,7 @@ const createOrder = async (req, res) => {
       // Deduct stock immediately for COD
       for (const item of orderItems) {
         await Product.findByIdAndUpdate(item.productId, {
-          $inc: { stock: -item.quantity },
+          $inc: { stock: -item.quantity, soldCount: item.quantity },
         });
       }
 
@@ -489,7 +489,7 @@ const updateOrderStatus = async (req, res) => {
       if (order.paymentMethod === 'COD' || prevPaymentStatus === 'paid') {
         for (const item of order.products) {
           await Product.findByIdAndUpdate(item.productId, {
-            $inc: { stock: item.quantity },
+            $inc: { stock: item.quantity, soldCount: -item.quantity },
           });
         }
       }
@@ -533,7 +533,7 @@ const updateOrderStatus = async (req, res) => {
       // Deduct stock upon payment approval
       for (const item of order.products) {
         await Product.findByIdAndUpdate(item.productId, {
-          $inc: { stock: -item.quantity },
+          $inc: { stock: -item.quantity, soldCount: item.quantity },
         });
       }
       
@@ -612,7 +612,7 @@ const approveOrderSMS = async (req, res) => {
     // Deduct stock upon payment approval
     for (const item of order.products) {
       await Product.findByIdAndUpdate(item.productId, {
-        $inc: { stock: -item.quantity },
+        $inc: { stock: -item.quantity, soldCount: item.quantity },
       });
     }
 
