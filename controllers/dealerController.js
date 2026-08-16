@@ -132,7 +132,7 @@ const getPublicDealerProfile = async (req, res) => {
 // @access  Public
 const getApprovedDealersPublic = async (req, res) => {
   try {
-    const dealers = await Dealer.find({ approvalStatus: 'approved' }).select('businessName ownerName email phone address logo description msmeCertificate');
+    const dealers = await Dealer.find({ approvalStatus: 'approved' }).select('userId businessName ownerName email phone address logo description msmeCertificate');
     res.json(dealers);
   } catch (error) {
     res.status(500).json({ message: error.message });
