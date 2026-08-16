@@ -427,10 +427,52 @@ const sendResetPasswordEmail = async (email, resetLink) => {
   }
 };
 
+const sendInquiryReplyEmail = async (email, name, subject, message, replyMessage) => {
+  try {
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM Support'}" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Reply: ${subject} - TENAQUARIUM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1e3a8a; margin: 0; font-size: 24px;">TENAQUARIUM</h2>
+          </div>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Hello ${name},</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Our Support Admin has replied to your request regarding "<strong>${subject}</strong>":</p>
+          
+          <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 4px; color: #1e293b; font-size: 15px; font-style: italic; line-height: 1.6;">
+            ${replyMessage.replace(/\n/g, '<br/>')}
+          </div>
+
+          <p style="color: #334155; font-size: 14px; line-height: 1.6; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+            Original message submitted:<br/>
+            <span style="color: #64748b; font-size: 13px;">"${message}"</span>
+          </p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Loop': 'true',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`Inquiry reply email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`Error sending inquiry reply email to ${email}:`, error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   sendInvoiceEmail,
   sendStatusEmail,
   sendAdminOtpEmail,
   sendAdminLoginDeviceAlert,
   sendResetPasswordEmail,
+  sendInquiryReplyEmail,
 };

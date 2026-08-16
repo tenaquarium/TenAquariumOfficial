@@ -297,6 +297,8 @@ const updateUserProfile = async (req, res) => {
           dealer.accountNumber = req.body.accountNumber !== undefined ? req.body.accountNumber : dealer.accountNumber;
           dealer.ifscCode = req.body.ifscCode !== undefined ? req.body.ifscCode : dealer.ifscCode;
           dealer.branchName = req.body.branchName !== undefined ? req.body.branchName : dealer.branchName;
+          dealer.discountPercentage = req.body.discountPercentage !== undefined ? Number(req.body.discountPercentage) : dealer.discountPercentage;
+          dealer.customOfferText = req.body.customOfferText !== undefined ? req.body.customOfferText : dealer.customOfferText;
 
           if (req.body.resubmit === true) {
             dealer.approvalStatus = 'pending';

@@ -445,6 +445,13 @@ const updateOrderStatus = async (req, res) => {
         refundAmount: amount,
         cancellationReason: reason
       };
+    } else if (orderStatus === 'Cancelled') {
+      order.cancellationDetails = {
+        requestedAt: new Date(),
+        refundPercentage: 100,
+        refundAmount: order.totalAmount,
+        cancellationReason: req.body.cancellationReason || 'Cancelled by administrator'
+      };
     }
 
     // Send status change email notifications to the customer

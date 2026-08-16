@@ -36,6 +36,11 @@ const productSchema = new mongoose.Schema(
       min: [0, 'Stock cannot be negative'],
       default: 0,
     },
+    minQuantity: {
+      type: Number,
+      default: 2,
+      min: [1, 'Minimum quantity cannot be less than 1'],
+    },
     images: {
       type: [String],
       required: [true, 'Please add at least one product image URL'],

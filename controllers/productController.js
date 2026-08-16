@@ -68,6 +68,19 @@ const getProducts = async (req, res) => {
 
     const products = await apiQuery;
     
+    // Fetch active dealers matching these products to attach discount details
+    const dealerUserIds = Array.from(new Set(products.map(p => p.dealerId?._id || p.dealerId)));
+    const dealerProfiles = await Dealer.find({ userId: { $in: dealerUserIds } });
+    
+    const dealerOffersMap = {};
+    dealerProfiles.forEach(dp => {
+      dealerOffersMap[dp.userId.toString()] = {
+        discountPercentage: dp.discountPercentage || 0,
+        customOfferText: dp.customOfferText || '',
+        businessName: dp.businessName,
+      };
+    });
+
     // Filter duplicates by name per dealer
     const seenDealerProducts = new Set();
     const uniqueProducts = [];
@@ -77,7 +90,14 @@ const getProducts = async (req, res) => {
       const nameKey = `${dealerIdStr}_${prod.productName.trim().toLowerCase()}`;
       if (!seenDealerProducts.has(nameKey)) {
         seenDealerProducts.add(nameKey);
-        uniqueProducts.push(prod);
+        
+        const prodObj = prod.toObject();
+        prodObj.dealerOffer = dealerOffersMap[dealerIdStr] || {
+          discountPercentage: 0,
+          customOfferText: '',
+        };
+        
+        uniqueProducts.push(prodObj);
       }
     }
     
@@ -108,7 +128,9 @@ const getProductById = async (req, res) => {
           email: dealerProfile.email,
           address: dealerProfile.address,
           description: dealerProfile.description,
-          approvalStatus: dealerProfile.approvalStatus
+          approvalStatus: dealerProfile.approvalStatus,
+          discountPercentage: dealerProfile.discountPercentage || 0,
+          customOfferText: dealerProfile.customOfferText || '',
         } : null
       });
     } else {
@@ -148,7 +170,7 @@ const getDealerProducts = async (req, res) => {
 // @route   POST /api/products
 // @access  Private/Dealer
 const createProduct = async (req, res) => {
-  const { productName, description, category, price, stock, images, isReturnable } = req.body;
+  const { productName, description, category, price, stock, images, isReturnable, minQuantity } = req.body;
 
   try {
     // Verify dealer is approved before allowing them to post products
@@ -176,6 +198,7 @@ const createProduct = async (req, res) => {
       category,
       price,
       stock,
+      minQuantity: minQuantity !== undefined ? Number(minQuantity) : 2,
       images: images || ['https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=500'],
       dealerId: req.user._id,
       isReturnable: isReturnable !== undefined ? isReturnable : true,
@@ -191,7 +214,7 @@ const createProduct = async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Dealer
 const updateProduct = async (req, res) => {
-  const { productName, description, category, price, stock, images, isReturnable } = req.body;
+  const { productName, description, category, price, stock, images, isReturnable, minQuantity } = req.body;
 
   try {
     const product = await Product.findById(req.params.id);
@@ -224,6 +247,7 @@ const updateProduct = async (req, res) => {
     product.category = category || product.category;
     product.price = price !== undefined ? price : product.price;
     product.stock = stock !== undefined ? stock : product.stock;
+    product.minQuantity = minQuantity !== undefined ? Number(minQuantity) : product.minQuantity;
     product.images = images || product.images;
     if (isReturnable !== undefined) product.isReturnable = isReturnable;
 

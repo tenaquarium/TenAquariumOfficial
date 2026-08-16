@@ -13,8 +13,8 @@ const getAdminStats = async (req, res) => {
     const totalProducts = await Product.countDocuments({});
     
     // Calculate total orders and revenue
-    const orders = await Order.find({ paymentStatus: 'paid' });
-    const totalOrdersCount = await Order.countDocuments({});
+    const orders = await Order.find({ paymentStatus: 'paid', orderStatus: { $ne: 'Cancelled' } });
+    const totalOrdersCount = await Order.countDocuments({ orderStatus: { $ne: 'Cancelled' } });
     const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
 
     // Monthly Sales Report for the last 6 months
@@ -83,6 +83,7 @@ const getDealerStats = async (req, res) => {
     const orders = await Order.find({
       'products.dealerId': req.user._id,
       paymentStatus: 'paid',
+      orderStatus: { $ne: 'Cancelled' },
       createdAt: { $lte: threeHoursAgo }
     });
 
@@ -110,6 +111,7 @@ const getDealerStats = async (req, res) => {
       {
         $match: {
           paymentStatus: 'paid',
+          orderStatus: { $ne: 'Cancelled' },
           createdAt: { $gte: sixMonthsAgo, $lte: threeHoursAgo },
           'products.dealerId': req.user._id
         }
