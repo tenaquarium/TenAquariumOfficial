@@ -8,6 +8,23 @@ const connectDB = async () => {
     // Automatically seed default categories if none exist
     const { seedDefaultCategories } = require('../controllers/categoryController');
     await seedDefaultCategories();
+
+    // Automatically seed default free shipping campaign configuration
+    const Settings = require('../models/Settings');
+    await Settings.findOneAndUpdate(
+      { key: 'freeShipping' },
+      {
+        $setOnInsert: {
+          key: 'freeShipping',
+          value: {
+            status: 'ON',
+            startDate: '2026-08-01',
+            endDate: '2026-08-31',
+          }
+        }
+      },
+      { upsert: true }
+    );
   } catch (error) {
     console.error(`Error connecting to MongoDB: ${error.message}`);
     process.exit(1);

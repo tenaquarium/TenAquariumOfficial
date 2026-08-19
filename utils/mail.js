@@ -96,7 +96,7 @@ const generateInvoicePDF = (order) => {
        .lineTo(550, currentY)
        .stroke();
 
-    const pCharge = order.packingCharge !== undefined ? order.packingCharge : (order.deliveryCharge ? 0 : 40);
+    const pCharge = order.packingCharge !== undefined ? order.packingCharge : 59;
     const dCharge = order.deliveryCharge || 0;
     const sub = order.totalAmount - dCharge - pCharge;
 
@@ -468,6 +468,189 @@ const sendInquiryReplyEmail = async (email, name, subject, message, replyMessage
   }
 };
 
+const sendDealerNewOrderEmail = async (order, dealerEmail, dealerItems) => {
+  try {
+    const orderDisplayId = order.customOrderId || order._id.toString().slice(-6);
+    
+    // Build items rows
+    const itemsHtml = dealerItems.map(item => `
+      <tr style="border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 10px 0; color: #334155;">
+          <strong>${item.productName}</strong><br/>
+          <span style="font-size: 12px; color: #64748b;">Color: ${item.color || 'Standard'}</span>
+        </td>
+        <td style="padding: 10px 0; text-align: center; color: #334155;">${item.quantity}</td>
+        <td style="padding: 10px 0; text-align: right; color: #334155;">Rs ${item.price.toLocaleString()}</td>
+        <td style="padding: 10px 0; text-align: right; color: #334155; font-weight: bold;">Rs ${(item.price * item.quantity).toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM'}" <${process.env.SMTP_USER}>`,
+      to: dealerEmail,
+      subject: `New Order Received: #${orderDisplayId} - TENAQUARIUM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1e3a8a; margin: 0; font-size: 24px;">TENAQUARIUM</h2>
+            <p style="color: #64748b; margin: 5px 0 0; font-size: 12px;">New Order Notification for Dealer</p>
+          </div>
+          
+          <h3 style="color: #0f766e; text-align: center; margin-bottom: 20px;">You Have Received a New Order!</h3>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Hello,</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">A customer has placed a new order <strong>#${orderDisplayId}</strong>. Below are the customer's details and the items you need to prepare:</p>
+          
+          <div style="margin: 20px 0; padding: 20px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #0284c7;">
+            <h4 style="color: #0369a1; margin-top: 0; margin-bottom: 12px; font-size: 16px;">Customer & Shipping Details</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #475569;">
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold; width: 120px;">Name:</td>
+                <td style="padding: 4px 0; color: #1e293b;">${order.shippingAddress.name || 'Customer'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">Phone:</td>
+                <td style="padding: 4px 0; color: #1e293b;">${order.shippingAddress.phone}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold; vertical-align: top;">Shipping Address:</td>
+                <td style="padding: 4px 0; color: #1e293b; line-height: 1.5;">
+                  ${order.shippingAddress.address},<br/>
+                  ${order.shippingAddress.city}, ${order.shippingAddress.state} - ${order.shippingAddress.zip}
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin: 25px 0;">
+            <h4 style="color: #0f766e; margin-bottom: 10px; font-size: 16px;">Ordered Items</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <thead>
+                <tr style="border-bottom: 2px solid #e2e8f0; color: #1e3a8a; font-weight: bold;">
+                  <th style="padding: 8px 0; text-align: left;">Product</th>
+                  <th style="padding: 8px 0; text-align: center; width: 60px;">Qty</th>
+                  <th style="padding: 8px 0; text-align: right; width: 100px;">Price</th>
+                  <th style="padding: 8px 0; text-align: right; width: 100px;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <p style="color: #475569; font-size: 14px; line-height: 1.6; background-color: #fffbeb; border: 1px solid #fef3c7; padding: 12px; border-radius: 6px; color: #b45309;">
+            <strong>Note:</strong> Please check your Dealer Dashboard to update the fulfillment status (Shipped, In Transit, etc.) once the order is ready.
+          </p>
+
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+          <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">TENAQUARIUM Support | Salem, Tamil Nadu, India.</p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`New order dealer notification email sent successfully to ${dealerEmail}`);
+  } catch (error) {
+    console.error(`Error sending new order dealer email to ${dealerEmail}:`, error.message);
+  }
+};
+
+const sendAdminRefundNotificationEmail = async (order) => {
+  try {
+    const orderDisplayId = order.customOrderId || order._id.toString().slice(-6);
+    
+    // Build items description
+    const itemsDesc = order.products.map(item => {
+      const prodName = item.productId?.productName || 'Product';
+      return `${prodName} (Qty: ${item.quantity})`;
+    }).join(', ');
+
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM'}" <${process.env.SMTP_USER}>`,
+      to: 'tenaquarium@gmail.com', // Admin email
+      subject: `🚨 REFUND BANK DETAILS SUBMITTED: Order #${orderDisplayId}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fca5a5; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #991b1b; margin: 0; font-size: 24px;">TENAQUARIUM</h2>
+            <p style="color: #ef4444; margin: 5px 0 0; font-size: 14px; font-weight: bold;">🚨 REFUND REQUEST VERIFICATION</p>
+          </div>
+          
+          <h3 style="color: #1e3a8a; text-align: center; margin-bottom: 20px;">Customer Submitted Bank Details for Refund</h3>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Hello Admin,</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Customer <strong>${order.shippingAddress.name}</strong> has submitted their bank details for the cancelled order <strong>#${orderDisplayId}</strong>.</p>
+          
+          <div style="margin: 20px 0; padding: 20px; background-color: #fef2f2; border-radius: 8px; border-left: 4px solid #ef4444;">
+            <h4 style="color: #991b1b; margin-top: 0; margin-bottom: 12px; font-size: 16px;">Refund details</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #475569;">
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold; width: 150px;">Refund Amount:</td>
+                <td style="padding: 4px 0; color: #b91c1c; font-weight: bold; font-size: 16px;">Rs ${order.cancellationDetails.refundAmount.toLocaleString()} (${order.cancellationDetails.refundPercentage}% of total)</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">Cancellation Reason:</td>
+                <td style="padding: 4px 0; color: #1e293b;">${order.cancellationDetails.cancellationReason}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">Cancelled By:</td>
+                <td style="padding: 4px 0; color: #1e293b; text-transform: uppercase;">${order.cancellationDetails.cancelledBy}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold; vertical-align: top;">Products in Order:</td>
+                <td style="padding: 4px 0; color: #1e293b; line-height: 1.5;">${itemsDesc}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin: 20px 0; padding: 20px; background-color: #f0fdf4; border-radius: 8px; border-left: 4px solid #22c55e;">
+            <h4 style="color: #166534; margin-top: 0; margin-bottom: 12px; font-size: 16px;">Customer Bank Account Details</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #475569;">
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold; width: 150px;">Account Holder:</td>
+                <td style="padding: 4px 0; color: #14532d; font-weight: bold;">${order.cancellationDetails.accountHolderName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">Bank Name:</td>
+                <td style="padding: 4px 0; color: #14532d;">${order.cancellationDetails.bankName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">Account Number:</td>
+                <td style="padding: 4px 0; color: #14532d; font-weight: bold;">${order.cancellationDetails.accountNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: bold;">IFSC Code:</td>
+                <td style="padding: 4px 0; color: #14532d; font-weight: bold;">${order.cancellationDetails.ifscCode}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+            Please process the bank transfer for this refund and update the refund status on the Admin Dashboard.
+          </p>
+
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+          <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">TENAQUARIUM Security | Salem, Tamil Nadu, India.</p>
+        </div>
+      `,
+      headers: {
+        'Auto-Submitted': 'auto-generated',
+        'Importance': 'high',
+        'X-Priority': '1'
+      }
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`Admin refund notification email sent successfully for order #${orderDisplayId}`);
+  } catch (error) {
+    console.error(`Error sending admin refund notification email:`, error.message);
+  }
+};
+
 module.exports = {
   sendInvoiceEmail,
   sendStatusEmail,
@@ -475,4 +658,6 @@ module.exports = {
   sendAdminLoginDeviceAlert,
   sendResetPasswordEmail,
   sendInquiryReplyEmail,
+  sendDealerNewOrderEmail,
+  sendAdminRefundNotificationEmail,
 };

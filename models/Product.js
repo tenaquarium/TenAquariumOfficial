@@ -7,10 +7,6 @@ const productSchema = new mongoose.Schema(
       required: [true, 'Please add a product name'],
       trim: true,
     },
-    description: {
-      type: String,
-      required: [true, 'Please add a description'],
-    },
     category: {
       type: String,
       required: [true, 'Please select a category'],
@@ -66,6 +62,17 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    hasVariants: {
+      type: Boolean,
+      default: false,
+    },
+    variants: [
+      {
+        color: { type: String, required: true },
+        image: { type: String, required: true },
+        stock: { type: Number, default: 0, min: 0 }
+      }
+    ],
   },
   {
     timestamps: true,
@@ -75,5 +82,7 @@ const productSchema = new mongoose.Schema(
 // Indexes for high performance querying
 productSchema.index({ dealerId: 1 });
 productSchema.index({ category: 1 });
+productSchema.index({ productName: 1 });
+productSchema.index({ category: 1, price: 1 });
 
 module.exports = mongoose.model('Product', productSchema);

@@ -5,35 +5,159 @@ const Dealer = require('../models/Dealer');
 const Notification = require('../models/Notification');
 const mongoose = require('mongoose');
 const { sendSMS } = require('../utils/sms');
+const Settings = require('../models/Settings');
 
+const deductProductStock = async (productId, color, quantity) => {
+  const product = await Product.findById(productId);
+  if (!product) return;
 
+  if (product.hasVariants && color && color !== 'Standard') {
+    const variantIndex = product.variants.findIndex(v => v.color === color);
+    if (variantIndex > -1) {
+      product.variants[variantIndex].stock = Math.max(0, product.variants[variantIndex].stock - quantity);
+    }
+    product.stock = product.variants.reduce((sum, v) => sum + v.stock, 0);
+  } else {
+    product.stock = Math.max(0, product.stock - quantity);
+  }
+  product.soldCount = (product.soldCount || 0) + quantity;
+  await product.save();
+};
+
+const restoreProductStock = async (productId, color, quantity) => {
+  const product = await Product.findById(productId);
+  if (!product) return;
+
+  if (product.hasVariants && color && color !== 'Standard') {
+    const variantIndex = product.variants.findIndex(v => v.color === color);
+    if (variantIndex > -1) {
+      product.variants[variantIndex].stock += quantity;
+    }
+    product.stock = product.variants.reduce((sum, v) => sum + v.stock, 0);
+  } else {
+    product.stock += quantity;
+  }
+  product.soldCount = Math.max(0, (product.soldCount || 0) - quantity);
+  await product.save();
+};
 
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private/Customer
 const createOrder = async (req, res) => {
-  const { cartItems, shippingAddress, paymentMethod, courierService, deliveryCharge } = req.body;
+  const { cartItems, shippingAddress, paymentMethod, courierService, deliveryCharge, policyAccepted, isDirectBuy } = req.body;
 
   if (!cartItems || cartItems.length === 0) {
     return res.status(400).json({ message: 'No items in order' });
   }
 
+  // 1. Validate Policy Acceptance
+  if (!policyAccepted) {
+    return res.status(400).json({ message: 'Policy acceptance is required to place an order.' });
+  }
+
+  // 2. Validate Address & Pincode
+  if (!shippingAddress || !shippingAddress.address || !shippingAddress.zip) {
+    return res.status(400).json({ message: 'Shipping address and Pincode are required.' });
+  }
+
+  const pincodeRegex = /^[1-9][0-9]{5}$/;
+  if (!pincodeRegex.test(shippingAddress.zip)) {
+    return res.status(400).json({ message: 'Format of Pincode must be a 6-digit Indian PIN code.' });
+  }
+
+  // 3. Validate fish/plant shipments to North Indian states
+  const southStates = ['tamil nadu', 'tamilnadu', 'kerala', 'karnataka', 'andhra pradesh', 'telangana', 'puducherry', 'pondicherry', 'goa'];
+  const shippingStateClean = (shippingAddress.state || '').toLowerCase().replace(/\s+/g, '');
+  const isSouthState = southStates.some(s => shippingStateClean.includes(s.replace(/\s+/g, '')));
+
+  if (!isSouthState) {
+    let hasLiveShipment = false;
+    for (const item of cartItems) {
+      const product = await Product.findById(item.productId);
+      if (product && (product.category === 'Aquarium Fish' || product.category === 'Aquarium Plants')) {
+        hasLiveShipment = true;
+        break;
+      }
+    }
+    if (hasLiveShipment) {
+      return res.status(400).json({
+        message: 'Transport not available for fish/plant shipment to North India. We can ship all other products. Please remove fish or plants from your cart to proceed.'
+      });
+    }
+  }
+
   try {
     let subtotalAmount = 0;
+    let totalWeight = 0;
     const orderItems = [];
 
-    // Verify stock and calculate price from DB (Security check)
+    // Calculate total quantity per productId in cartItems for group-level MOQ validation
+    const productQuantities = {};
+    for (const item of cartItems) {
+      const pid = item.productId.toString();
+      productQuantities[pid] = (productQuantities[pid] || 0) + item.quantity;
+    }
+
+    // Verify stock, minimum quantity, and calculate price from DB (Security check)
     for (const item of cartItems) {
       const product = await Product.findById(item.productId);
       if (!product) {
         return res.status(404).json({ message: `Product not found: ${item.productId}` });
       }
 
-      if (product.stock < item.quantity) {
+      // Validate stock
+      const itemColor = item.color || '';
+      if (product.hasVariants && itemColor && itemColor !== 'Standard') {
+        const variant = product.variants.find(v => v.color === itemColor);
+        if (!variant) {
+          return res.status(400).json({
+            message: `Color variant "${itemColor}" not found for ${product.productName}.`,
+          });
+        }
+        if (variant.stock < item.quantity) {
+          return res.status(400).json({
+            message: `Insufficient stock for ${product.productName} (${itemColor}). Only ${variant.stock} left.`,
+          });
+        }
+      } else {
+        if (product.stock < item.quantity) {
+          return res.status(400).json({
+            message: `Insufficient stock for ${product.productName}. Only ${product.stock} left.`,
+          });
+        }
+      }
+
+      // Validate minimum quantity limit on cumulative product quantity
+      const totalProductQty = productQuantities[product._id.toString()];
+      const minQty = product.minQuantity || 2;
+      if (totalProductQty < minQty) {
         return res.status(400).json({
-          message: `Insufficient stock for ${product.productName}. Only ${product.stock} left.`,
+          message: `Total quantity for ${product.productName} (${totalProductQty}) is below the minimum required quantity of ${minQty} items.`,
         });
       }
+
+      // Calculate weight based on category
+      let itemWeight = 0.5; // default 0.5kg
+      if (product.category === 'Aquarium Tanks') {
+        if (product.price < 1500) itemWeight = 5;
+        else if (product.price < 5000) itemWeight = 15;
+        else itemWeight = 40;
+      } else if (product.category === 'Aquarium Filters') {
+        if (product.price < 400) itemWeight = 0.5;
+        else if (product.price < 1000) itemWeight = 0.75;
+        else itemWeight = 1.2;
+      } else if (product.category === 'Aquarium Lights') {
+        if (product.price < 500) itemWeight = 0.5;
+        else if (product.price < 2000) itemWeight = 1.0;
+        else itemWeight = 2.0;
+      } else if (product.category === 'Aquarium Fish') {
+        if (product.price < 250) itemWeight = 0.3;
+        else itemWeight = 1.0;
+      } else if (product.category === 'Aquarium Plants') {
+        itemWeight = 0.3;
+      }
+      totalWeight += itemWeight * item.quantity;
 
       // Calculate discount and custom offer on the server side
       const dealer = await Dealer.findOne({ userId: product.dealerId });
@@ -56,15 +180,107 @@ const createOrder = async (req, res) => {
       subtotalAmount += itemCost;
       orderItems.push({
         productId: product._id,
+        color: itemColor,
+        image: item.image || '',
         quantity: item.quantity,
         price: discountedUnitPrice, // Save actual paid discounted price
         dealerId: product.dealerId,
       });
     }
 
-    const chargeVal = 0; // Free shipping
-    const packingVal = 40; // Flat packing charge
-    const finalTotalAmount = subtotalAmount + packingVal;
+    // 3. Resolve Zone & Calculate Courier Rates
+    const ZoneMapping = require('../models/ZoneMapping');
+    const deliveryZoneInfo = await ZoneMapping.findOne({
+      pincodeStart: { $lte: shippingAddress.zip },
+      pincodeEnd: { $gte: shippingAddress.zip }
+    });
+    if (!deliveryZoneInfo) {
+      return res.status(400).json({ message: 'Professional Courier does not deliver to this pincode.' });
+    }
+
+    let selectedCourierName = 'Professional Courier';
+    let selectedServiceType = 'Surface';
+    if (courierService) {
+      if (courierService.includes(' - ')) {
+        const parts = courierService.split(' - ');
+        selectedCourierName = parts[0];
+        selectedServiceType = parts[1];
+      } else {
+        selectedCourierName = courierService;
+      }
+    }
+
+    // Resolve Dealer Pincode
+    let pickupPincode = '636003';
+    const firstItem = orderItems[0];
+    const firstProduct = await Product.findById(firstItem.productId);
+    if (firstProduct) {
+      const dealer = await Dealer.findOne({ userId: firstProduct.dealerId });
+      if (dealer && dealer.address) {
+        const match = dealer.address.match(/\b\d{6}\b/);
+        if (match) pickupPincode = match[0];
+      }
+    }
+
+    const pickupZoneInfo = await ZoneMapping.findOne({
+      pincodeStart: { $lte: pickupPincode },
+      pincodeEnd: { $gte: pickupPincode }
+    });
+    const fromZone = pickupZoneInfo ? pickupZoneInfo.zone : 'Zone A';
+    const toZone = deliveryZoneInfo.zone;
+
+    // Resolve Professional Courier Rates
+    const CourierRate = require('../models/CourierRate');
+    const rateCard = await CourierRate.findOne({
+      courierName: 'Professional Courier',
+      fromZone,
+      toZone,
+      shipmentType: 'Non-Document',
+      serviceType: selectedServiceType,
+      activeStatus: true
+    });
+
+    let computedCourierCharge = 0;
+    if (rateCard) {
+      const volumetricWeight = (15 * 10 * 10) / 5000;
+      const rawChargeableWeight = Math.max(totalWeight, volumetricWeight);
+      const chargeableWeight = Math.ceil(rawChargeableWeight * 2) / 2;
+
+      let baseCharge = rateCard.basePrice;
+      if (chargeableWeight > rateCard.baseWeight) {
+        const additionalWeight = chargeableWeight - rateCard.baseWeight;
+        const additionalKgSlabs = Math.ceil(additionalWeight);
+        baseCharge = rateCard.basePrice + (additionalKgSlabs * rateCard.additionalKgPrice);
+      }
+
+      const fuelCharge = Math.round((baseCharge * rateCard.fuelChargePercent) / 100 * 100) / 100;
+      const gst = Math.round(((baseCharge + fuelCharge) * rateCard.gstPercent) / 100 * 100) / 100;
+      computedCourierCharge = Math.round((baseCharge + fuelCharge + gst) * 100) / 100;
+    } else {
+      // Fallback programmatic rates if DB not seeded
+      computedCourierCharge = selectedServiceType === 'Surface' ? 60 : 110;
+    }
+
+    const packingVal = 59; // Enforced Packing charge of ₹59
+
+    // Check if free shipping is active
+    let freeShippingActive = false;
+    try {
+      const config = await Settings.findOne({ key: 'freeShipping' });
+      if (config && config.value && config.value.status === 'ON') {
+        const today = new Date().toISOString().split('T')[0];
+        const { startDate, endDate } = config.value;
+        let dateInRange = true;
+        if (startDate && today < startDate) dateInRange = false;
+        if (endDate && today > endDate) dateInRange = false;
+        if (dateInRange) freeShippingActive = true;
+      }
+    } catch (settingsErr) {
+      console.error('Error fetching settings for free shipping:', settingsErr.message);
+    }
+
+    const finalCourierCharge = freeShippingActive ? 0 : computedCourierCharge;
+    const finalTotalAmount = subtotalAmount + finalCourierCharge + packingVal;
 
     // Generate Custom Sequential Order ID: YYMMDDCCount
     const now = new Date();
@@ -88,54 +304,12 @@ const createOrder = async (req, res) => {
       paymentMethod,
       paymentStatus: 'pending',
       orderStatus: 'Processing',
-      courierService: 'Free Shipping',
-      deliveryCharge: chargeVal,
+      courierService: `${selectedCourierName} - ${selectedServiceType}`,
+      deliveryCharge: finalCourierCharge,
       packingCharge: packingVal,
-      customOrderId
+      customOrderId,
+      isDirectBuy: isDirectBuy || false
     };
-
-    // If Payment Method is COD
-    if (paymentMethod === 'COD') {
-      orderData.paymentStatus = 'pending';
-
-      const order = await Order.create(orderData);
-
-      // Deduct stock immediately for COD
-      for (const item of orderItems) {
-        await Product.findByIdAndUpdate(item.productId, {
-          $inc: { stock: -item.quantity, soldCount: item.quantity },
-        });
-      }
-
-      // Clear Customer's Cart
-      await Cart.findOneAndUpdate({ customerId: req.user._id }, { products: [] });
-
-      // Trigger invoice email for COD
-      try {
-        const populatedOrderForInvoice = await Order.findById(order._id).populate('customerId').populate('products.productId');
-        if (populatedOrderForInvoice && populatedOrderForInvoice.customerId && populatedOrderForInvoice.customerId.email) {
-          const { sendInvoiceEmail } = require('../utils/mail');
-          sendInvoiceEmail(populatedOrderForInvoice, populatedOrderForInvoice.customerId.email).catch(err => {
-            console.error('Error sending COD invoice email:', err.message);
-          });
-        }
-      } catch (invoiceErr) {
-        console.error('Failed to trigger COD invoice email on order creation:', invoiceErr.message);
-      }
-
-      // Create notification
-      await Notification.create({
-        userId: req.user._id,
-        message: `Your order containing ${orderItems.length} items has been placed successfully (COD). Shipped via: ${courierService || 'Standard Courier'}. Total: ₹${finalTotalAmount.toLocaleString()}`,
-        link: '/customer/dashboard'
-      });
-
-      return res.status(201).json({
-        success: true,
-        order,
-        message: 'Order placed successfully with Cash on Delivery.',
-      });
-    }
 
     // If Payment Method is UPI-QR
     if (paymentMethod === 'UPI-QR') {
@@ -143,6 +317,48 @@ const createOrder = async (req, res) => {
       orderData.qrPaymentExpiresAt = new Date(Date.now() + 300 * 1000); // 5 minutes active window
 
       const order = await Order.create(orderData);
+
+      // 1. Send SMS to Admin with full customer name and address
+      const adminSmsMessage = `TENAQUARIUM: New Order #${order._id.toString().slice(-6)} of Rs ${finalTotalAmount} placed. Cust: ${shippingAddress.name}. Ph: ${shippingAddress.phone}. Addr: ${shippingAddress.address}, ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.zip}`;
+      sendSMS(adminSmsMessage).catch(err => {
+        console.error('Error sending admin order placement SMS:', err.message);
+      });
+
+      // 2. Group items by dealerId and email each dealer with customer details
+      try {
+        const User = mongoose.model('User');
+        
+        // Group items by dealerId
+        const dealerGroup = {};
+        for (const item of orderItems) {
+          const did = item.dealerId.toString();
+          if (!dealerGroup[did]) dealerGroup[did] = [];
+          
+          // Get product name
+          const productObj = await Product.findById(item.productId);
+          const productName = productObj ? productObj.productName : 'Aquarium Product';
+          
+          dealerGroup[did].push({
+            productName,
+            color: item.color,
+            quantity: item.quantity,
+            price: item.price
+          });
+        }
+
+        // Send email to each dealer
+        const { sendDealerNewOrderEmail } = require('../utils/mail');
+        for (const did of Object.keys(dealerGroup)) {
+          const dealerUser = await User.findById(did);
+          if (dealerUser && dealerUser.email) {
+            sendDealerNewOrderEmail(order, dealerUser.email, dealerGroup[did]).catch(err => {
+              console.error(`Error emailing dealer ${dealerUser.email}:`, err.message);
+            });
+          }
+        }
+      } catch (dealerEmailErr) {
+        console.error('Failed to notify dealers via email:', dealerEmailErr.message);
+      }
 
       // Create notification for customer
       await Notification.create({
@@ -319,11 +535,7 @@ const getMyOrders = async (req, res) => {
   try {
     await cancelExpiredOrders();
     const orders = await Order.find({
-      customerId: req.user._id,
-      $or: [
-        { paymentMethod: 'COD' },
-        { paymentMethod: 'UPI-QR', paymentStatus: 'paid' }
-      ]
+      customerId: req.user._id
     })
       .populate('products.productId', 'productName images category price isReturnable')
       .sort({ createdAt: -1 });
@@ -339,15 +551,9 @@ const getMyOrders = async (req, res) => {
 const getDealerOrders = async (req, res) => {
   try {
     await cancelExpiredOrders();
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
-    // Find all orders where at least one product belongs to this dealer and 3 hours have passed since placement
+    // Find all orders where at least one product belongs to this dealer immediately upon placement
     const orders = await Order.find({
-      'products.dealerId': req.user._id,
-      createdAt: { $lte: threeHoursAgo },
-      $or: [
-        { paymentMethod: 'COD' },
-        { paymentMethod: 'UPI-QR', paymentStatus: 'paid' }
-      ]
+      'products.dealerId': req.user._id
     })
       .populate('customerId', 'name email phone')
       .populate('products.productId', 'productName images price category isReturnable')
@@ -458,6 +664,9 @@ const updateOrderStatus = async (req, res) => {
         bankName: req.body.cancellationDetails.bankName || '',
         accountNumber: req.body.cancellationDetails.accountNumber || '',
         ifscCode: req.body.cancellationDetails.ifscCode || '',
+        accountHolderName: req.body.cancellationDetails.accountHolderName || '',
+        cancelledBy: 'customer',
+        needBankDetails: false,
         requestedAt: req.body.cancellationDetails.requestedAt || new Date(),
         refundPercentage: percentage,
         refundAmount: amount,
@@ -468,7 +677,9 @@ const updateOrderStatus = async (req, res) => {
         requestedAt: new Date(),
         refundPercentage: 100,
         refundAmount: order.totalAmount,
-        cancellationReason: req.body.cancellationReason || 'Cancelled by administrator'
+        cancellationReason: req.body.cancellationReason || `Cancelled by ${req.user.role}`,
+        cancelledBy: req.user.role,
+        needBankDetails: true
       };
     }
 
@@ -488,9 +699,7 @@ const updateOrderStatus = async (req, res) => {
       // Only restore if stock was actually deducted (COD order, or paid UPI order)
       if (order.paymentMethod === 'COD' || prevPaymentStatus === 'paid') {
         for (const item of order.products) {
-          await Product.findByIdAndUpdate(item.productId, {
-            $inc: { stock: item.quantity, soldCount: -item.quantity },
-          });
+          await restoreProductStock(item.productId, item.color, item.quantity);
         }
       }
     }
@@ -526,15 +735,15 @@ const updateOrderStatus = async (req, res) => {
     // Send customer order confirmation SMS if payment is approved now
     if (paymentStatus === 'paid' && prevPaymentStatus !== 'paid') {
       try {
-        await Cart.findOneAndUpdate({ customerId: order.customerId }, { products: [] });
+        if (!order.isDirectBuy) {
+          await Cart.findOneAndUpdate({ customerId: order.customerId }, { products: [] });
+        }
       } catch (cartErr) {
         console.error('Error clearing cart in updateOrderStatus:', cartErr.message);
       }
       // Deduct stock upon payment approval
       for (const item of order.products) {
-        await Product.findByIdAndUpdate(item.productId, {
-          $inc: { stock: -item.quantity, soldCount: item.quantity },
-        });
+        await deductProductStock(item.productId, item.color, item.quantity);
       }
       
       // Trigger invoice email on manual payment approval
@@ -611,14 +820,14 @@ const approveOrderSMS = async (req, res) => {
 
     // Deduct stock upon payment approval
     for (const item of order.products) {
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { stock: -item.quantity, soldCount: item.quantity },
-      });
+      await deductProductStock(item.productId, item.color, item.quantity);
     }
 
     // Clear customer cart
     try {
-      await Cart.findOneAndUpdate({ customerId: order.customerId }, { products: [] });
+      if (!order.isDirectBuy) {
+        await Cart.findOneAndUpdate({ customerId: order.customerId }, { products: [] });
+      }
     } catch (cartErr) {
       console.error('Error clearing cart in approveOrderSMS:', cartErr.message);
     }
@@ -908,6 +1117,67 @@ const updateDealerPayoutStatus = async (req, res) => {
   }
 };
 
+// @desc    Submit bank details for a refund on cancelled order
+// @route   PUT /api/orders/:id/refund-bank-details
+// @access  Private/Customer
+const submitRefundBankDetails = async (req, res) => {
+  const { bankName, accountNumber, ifscCode, accountHolderName } = req.body;
+
+  if (!bankName || !accountNumber || !ifscCode || !accountHolderName) {
+    return res.status(400).json({ message: 'All bank details are required.' });
+  }
+
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    // Verify owner
+    if (order.customerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to submit bank details for this order.' });
+    }
+
+    if (order.orderStatus !== 'Cancelled') {
+      return res.status(400).json({ message: 'Bank details can only be submitted for cancelled orders.' });
+    }
+
+    order.cancellationDetails.bankName = bankName;
+    order.cancellationDetails.accountNumber = accountNumber;
+    order.cancellationDetails.ifscCode = ifscCode;
+    order.cancellationDetails.accountHolderName = accountHolderName;
+    order.cancellationDetails.needBankDetails = false;
+    order.cancellationDetails.requestedAt = new Date();
+
+    const savedOrder = await order.save();
+
+    // Populate customer and products for email & SMS
+    const populatedOrder = await Order.findById(order._id)
+      .populate('customerId')
+      .populate('products.productId');
+
+    // 1. Send SMS to Admin
+    const adminSmsMessage = `TENAQUARIUM: Refund details submitted for Order #${order._id.toString().slice(-6)}. Cust: ${order.shippingAddress.name}. Bank: ${bankName}, Acc No: ${accountNumber}, IFSC: ${ifscCode}. Refund: Rs ${order.cancellationDetails.refundAmount.toFixed(0)}.`;
+    sendSMS(adminSmsMessage).catch(err => {
+      console.error('Error sending admin refund SMS:', err.message);
+    });
+
+    // 2. Send email to Admin
+    const { sendAdminRefundNotificationEmail } = require('../utils/mail');
+    sendAdminRefundNotificationEmail(populatedOrder).catch(err => {
+      console.error('Error sending admin refund email:', err.message);
+    });
+
+    res.json({
+      success: true,
+      message: 'Bank details submitted successfully. Admin has been notified for refund processing.',
+      order: savedOrder
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   submitPaymentProof,
@@ -922,4 +1192,5 @@ module.exports = {
   getPublicTracking,
   markRefundCompleted,
   updateDealerPayoutStatus,
+  submitRefundBankDetails,
 };

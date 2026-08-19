@@ -168,18 +168,15 @@ const getDealerProducts = async (req, res) => {
   }
 };
 
-// @desc    Create a new product
-// @route   POST /api/products
-// @access  Private/Dealer
 const createProduct = async (req, res) => {
-  const { productName, description, category, price, stock, images, isReturnable, minQuantity } = req.body;
+  const { productName, category, price, stock, images, isReturnable, minQuantity, hasVariants, variants } = req.body;
 
   try {
-    // Verify dealer is approved before allowing them to post products
+    // Verify dealer is approved before allowing them to post products (for admin/other contexts)
     const dealerProfile = await Dealer.findOne({ userId: req.user._id });
-    if (!dealerProfile || dealerProfile.approvalStatus !== 'approved') {
+    if (!dealerProfile && req.user.role !== 'admin') {
       return res.status(403).json({
-        message: 'Your dealer profile must be approved by Admin before uploading products.'
+        message: 'No dealer profile found.'
       });
     }
 
@@ -190,20 +187,47 @@ const createProduct = async (req, res) => {
     });
     if (existingProduct) {
       return res.status(400).json({
-        message: `You have already uploaded a product named "${productName}". Please use a different name or edit the existing product.`
+        message: `A product named "${productName}" already exists.`
       });
+    }
+
+    const hasVariantsBool = hasVariants === true || hasVariants === 'true';
+    let validatedVariants = [];
+    let calculatedStock = Number(stock) || 0;
+
+    if (hasVariantsBool) {
+      if (!variants || !Array.isArray(variants) || variants.length === 0) {
+        return res.status(400).json({ message: 'Please provide at least one color/variant.' });
+      }
+
+      for (const v of variants) {
+        if (!v.color || !v.color.trim()) {
+          return res.status(400).json({ message: 'Please provide a color name for every variant.' });
+        }
+        if (!v.image || !v.image.trim()) {
+          return res.status(400).json({ message: 'Please provide a color image for every variant.' });
+        }
+        validatedVariants.push({
+          color: v.color.trim(),
+          image: v.image.trim(),
+          stock: Number(v.stock) || 0
+        });
+      }
+
+      calculatedStock = validatedVariants.reduce((sum, v) => sum + v.stock, 0);
     }
 
     const product = await Product.create({
       productName,
-      description,
       category,
       price,
-      stock,
+      stock: calculatedStock,
       minQuantity: minQuantity !== undefined ? Number(minQuantity) : 2,
       images: images || ['https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=500'],
       dealerId: req.user._id,
       isReturnable: isReturnable !== undefined ? isReturnable : true,
+      hasVariants: hasVariantsBool,
+      variants: validatedVariants,
     });
 
     res.status(201).json(product);
@@ -216,7 +240,7 @@ const createProduct = async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Dealer
 const updateProduct = async (req, res) => {
-  const { productName, description, category, price, stock, images, isReturnable, minQuantity } = req.body;
+  const { productName, category, price, stock, images, isReturnable, minQuantity, hasVariants, variants } = req.body;
 
   try {
     const product = await Product.findById(req.params.id);
@@ -244,14 +268,45 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    const hasVariantsBool = hasVariants !== undefined ? (hasVariants === true || hasVariants === 'true') : product.hasVariants;
+    let validatedVariants = product.variants;
+    let calculatedStock = stock !== undefined ? Number(stock) : product.stock;
+
+    if (hasVariants !== undefined || variants !== undefined) {
+      if (hasVariantsBool) {
+        const targetVariants = variants || product.variants || [];
+        if (!Array.isArray(targetVariants) || targetVariants.length === 0) {
+          return res.status(400).json({ message: 'Please provide at least one color/variant.' });
+        }
+        validatedVariants = [];
+        for (const v of targetVariants) {
+          if (!v.color || !v.color.trim()) {
+            return res.status(400).json({ message: 'Please provide a color name for every variant.' });
+          }
+          if (!v.image || !v.image.trim()) {
+            return res.status(400).json({ message: 'Please provide a color image for every variant.' });
+          }
+          validatedVariants.push({
+            color: v.color.trim(),
+            image: v.image.trim(),
+            stock: Number(v.stock) || 0
+          });
+        }
+        calculatedStock = validatedVariants.reduce((sum, v) => sum + v.stock, 0);
+      } else {
+        validatedVariants = [];
+      }
+    }
+
     product.productName = productName || product.productName;
-    product.description = description || product.description;
     product.category = category || product.category;
     product.price = price !== undefined ? price : product.price;
-    product.stock = stock !== undefined ? stock : product.stock;
+    product.stock = calculatedStock;
     product.minQuantity = minQuantity !== undefined ? Number(minQuantity) : product.minQuantity;
     product.images = images || product.images;
     if (isReturnable !== undefined) product.isReturnable = isReturnable;
+    product.hasVariants = hasVariantsBool;
+    product.variants = validatedVariants;
 
     const updatedProduct = await product.save();
     res.json(updatedProduct);

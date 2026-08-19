@@ -1,5 +1,18 @@
 const CourierRate = require('../models/CourierRate');
 const ZoneMapping = require('../models/ZoneMapping');
+const Settings = require('../models/Settings');
+
+const isFreeShippingActive = async () => {
+  const config = await Settings.findOne({ key: 'freeShipping' });
+  if (config && config.value && config.value.status === 'ON') {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const { startDate, endDate } = config.value;
+    if (startDate && today < startDate) return false;
+    if (endDate && today > endDate) return false;
+    return true;
+  }
+  return false;
+};
 
 // Helper: Find Zone for Pincode
 const getZoneForPincode = async (pincode) => {
@@ -192,6 +205,136 @@ const deleteZone = async (req, res) => {
   }
 };
 
+// @desc    Check courier availability, resolve district/state and areas for a pincode
+// @route   POST /api/courier/check-availability
+// @access  Public
+const checkAvailability = async (req, res) => {
+  const { deliveryPincode, dealerId, weight } = req.body;
+  const pincodeRegex = /^[1-9][0-9]{5}$/;
+  if (!deliveryPincode || !pincodeRegex.test(deliveryPincode)) {
+    return res.status(400).json({ message: 'Delivery pincode must be a valid 6-digit Indian PIN code' });
+  }
+
+  try {
+    // 1. Resolve Delivery Zone
+    const deliveryZoneInfo = await getZoneForPincode(deliveryPincode);
+    if (!deliveryZoneInfo) {
+      return res.json({
+        success: false,
+        message: 'Professional Courier does not service this pincode.'
+      });
+    }
+
+    // 2. Resolve Dealer Pincode
+    let pickupPincode = '636003'; // default Salem pin code
+    if (dealerId) {
+      const Dealer = require('../models/Dealer');
+      let dealer = await Dealer.findById(dealerId);
+      if (!dealer) {
+        dealer = await Dealer.findOne({ userId: dealerId });
+      }
+      if (dealer && dealer.address) {
+        const match = dealer.address.match(/\b\d{6}\b/);
+        if (match) {
+          pickupPincode = match[0];
+        }
+      }
+    }
+
+    // 3. Resolve Pickup Zone
+    const pickupZoneInfo = await getZoneForPincode(pickupPincode);
+    const fromZone = pickupZoneInfo ? pickupZoneInfo.zone : 'Zone A';
+    const toZone = deliveryZoneInfo.zone;
+
+    // 4. Calculate Weight & chargeableWeight
+    const actW = Number(weight || 0.5);
+    const chargeableWeight = roundWeightToSlab(actW);
+
+    // 5. Query Active Rate Cards for Professional Courier
+    const CourierRate = require('../models/CourierRate');
+    const rates = await CourierRate.find({
+      courierName: 'Professional Courier',
+      fromZone,
+      toZone,
+      shipmentType: 'Non-Document',
+      activeStatus: true
+    });
+
+    const freeShipping = await isFreeShippingActive();
+
+    let quotes = [];
+    if (rates && rates.length > 0) {
+      quotes = rates.map((rate) => {
+        const baseWeight = rate.baseWeight;
+        const basePrice = rate.basePrice;
+        const additionalKgPrice = rate.additionalKgPrice;
+        const fuelChargePercent = rate.fuelChargePercent;
+        const gstPercent = rate.gstPercent;
+
+        let baseCharge = basePrice;
+        if (chargeableWeight > baseWeight) {
+          const additionalWeight = chargeableWeight - baseWeight;
+          const additionalKgSlabs = Math.ceil(additionalWeight);
+          baseCharge = basePrice + (additionalKgSlabs * additionalKgPrice);
+        }
+
+        const fuelCharge = Math.round((baseCharge * fuelChargePercent) / 100 * 100) / 100;
+        const gst = Math.round(((baseCharge + fuelCharge) * gstPercent) / 100 * 100) / 100;
+        const finalAmount = Math.round((baseCharge + fuelCharge + gst) * 100) / 100;
+
+        return {
+          serviceType: rate.serviceType,
+          finalAmount: freeShipping ? 0 : finalAmount,
+          estDays: rate.estDays
+        };
+      });
+    } else {
+      // Fallback programmatical rates if DB is not seeded yet
+      quotes = [
+        { serviceType: 'Surface', finalAmount: freeShipping ? 0 : 60, estDays: 3 },
+        { serviceType: 'Express', finalAmount: freeShipping ? 0 : 110, estDays: 2 }
+      ];
+    }
+
+    // 6. Query areas from official Indian Postal API
+    let areas = [];
+    let district = deliveryZoneInfo.stateName === 'Tamil Nadu' ? 'Salem' : 'District';
+    let state = deliveryZoneInfo.stateName || '';
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${deliveryPincode}`);
+      const data = await response.json();
+      if (data && data[0] && data[0].Status === 'Success') {
+        const postOffices = data[0].PostOffice;
+        if (postOffices && postOffices.length > 0) {
+          district = postOffices[0].District;
+          state = postOffices[0].State;
+          areas = postOffices.map(po => po.Name).filter(Boolean);
+        }
+      }
+    } catch (apiErr) {
+      console.error('Postal API error in backend check-availability', apiErr.message);
+    }
+
+    // Fallback areas if nothing returned
+    if (areas.length === 0) {
+      areas = ['Salem Central', 'Town Delivery Hub', 'Suburbs Sector'];
+    }
+
+    res.json({
+      success: true,
+      available: true,
+      courierName: 'Professional Courier',
+      quotes,
+      district,
+      state,
+      areas
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   calculateRates,
   getAllRates,
@@ -200,4 +343,5 @@ module.exports = {
   getAllZones,
   upsertZone,
   deleteZone,
+  checkAvailability
 };

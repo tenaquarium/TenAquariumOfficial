@@ -8,11 +8,13 @@ const {
   getAllZones,
   upsertZone,
   deleteZone,
+  checkAvailability
 } = require('../controllers/courierController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
-// Public Route
+// Public Routes
 router.post('/calculate', calculateRates);
+router.post('/check-availability', checkAvailability);
 
 // Admin-Only Routes
 router.use(protect);

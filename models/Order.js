@@ -14,6 +14,14 @@ const orderSchema = new mongoose.Schema(
           ref: 'Product',
           required: true,
         },
+        color: {
+          type: String,
+          default: '',
+        },
+        image: {
+          type: String,
+          default: '',
+        },
         quantity: {
           type: Number,
           required: true,
@@ -103,6 +111,10 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isDirectBuy: {
+      type: Boolean,
+      default: false
+    },
     trackingTimeline: [
       {
         status: { type: String },
@@ -122,6 +134,9 @@ const orderSchema = new mongoose.Schema(
       bankName: { type: String, default: '' },
       accountNumber: { type: String, default: '' },
       ifscCode: { type: String, default: '' },
+      accountHolderName: { type: String, default: '' },
+      cancelledBy: { type: String, default: '' },
+      needBankDetails: { type: Boolean, default: false },
       requestedAt: { type: Date },
       refundPercentage: { type: Number, default: 0 },
       refundAmount: { type: Number, default: 0 },
