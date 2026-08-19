@@ -216,91 +216,11 @@ const checkAvailability = async (req, res) => {
   }
 
   try {
-    // 1. Resolve Delivery Zone
-    const deliveryZoneInfo = await getZoneForPincode(deliveryPincode);
-    if (!deliveryZoneInfo) {
-      return res.json({
-        success: false,
-        message: 'Professional Courier does not service this pincode.'
-      });
-    }
-
-    // 2. Resolve Dealer Pincode
-    let pickupPincode = '636003'; // default Salem pin code
-    if (dealerId) {
-      const Dealer = require('../models/Dealer');
-      let dealer = await Dealer.findById(dealerId);
-      if (!dealer) {
-        dealer = await Dealer.findOne({ userId: dealerId });
-      }
-      if (dealer && dealer.address) {
-        const match = dealer.address.match(/\b\d{6}\b/);
-        if (match) {
-          pickupPincode = match[0];
-        }
-      }
-    }
-
-    // 3. Resolve Pickup Zone
-    const pickupZoneInfo = await getZoneForPincode(pickupPincode);
-    const fromZone = pickupZoneInfo ? pickupZoneInfo.zone : 'Zone A';
-    const toZone = deliveryZoneInfo.zone;
-
-    // 4. Calculate Weight & chargeableWeight
-    const actW = Number(weight || 0.5);
-    const chargeableWeight = roundWeightToSlab(actW);
-
-    // 5. Query Active Rate Cards for Professional Courier
-    const CourierRate = require('../models/CourierRate');
-    const rates = await CourierRate.find({
-      courierName: 'Professional Courier',
-      fromZone,
-      toZone,
-      shipmentType: 'Non-Document',
-      activeStatus: true
-    });
-
-    const freeShipping = await isFreeShippingActive();
-
-    let quotes = [];
-    if (rates && rates.length > 0) {
-      quotes = rates.map((rate) => {
-        const baseWeight = rate.baseWeight;
-        const basePrice = rate.basePrice;
-        const additionalKgPrice = rate.additionalKgPrice;
-        const fuelChargePercent = rate.fuelChargePercent;
-        const gstPercent = rate.gstPercent;
-
-        let baseCharge = basePrice;
-        if (chargeableWeight > baseWeight) {
-          const additionalWeight = chargeableWeight - baseWeight;
-          const additionalKgSlabs = Math.ceil(additionalWeight);
-          baseCharge = basePrice + (additionalKgSlabs * additionalKgPrice);
-        }
-
-        const fuelCharge = Math.round((baseCharge * fuelChargePercent) / 100 * 100) / 100;
-        const gst = Math.round(((baseCharge + fuelCharge) * gstPercent) / 100 * 100) / 100;
-        const finalAmount = Math.round((baseCharge + fuelCharge + gst) * 100) / 100;
-
-        return {
-          serviceType: rate.serviceType,
-          finalAmount: freeShipping ? 0 : finalAmount,
-          estDays: rate.estDays
-        };
-      });
-    } else {
-      // Fallback programmatical rates if DB is not seeded yet
-      quotes = [
-        { serviceType: 'Surface', finalAmount: freeShipping ? 0 : 60, estDays: 3 },
-        { serviceType: 'Express', finalAmount: freeShipping ? 0 : 110, estDays: 2 }
-      ];
-    }
-
-    // 6. Query areas from official Indian Postal API
+    let district = 'District';
+    let state = '';
     let areas = [];
-    let district = deliveryZoneInfo.stateName === 'Tamil Nadu' ? 'Salem' : 'District';
-    let state = deliveryZoneInfo.stateName || '';
 
+    // 1. Try Indian Postal API first
     try {
       const response = await fetch(`https://api.postalpincode.in/pincode/${deliveryPincode}`);
       const data = await response.json();
@@ -316,15 +236,58 @@ const checkAvailability = async (req, res) => {
       console.error('Postal API error in backend check-availability', apiErr.message);
     }
 
-    // Fallback areas if nothing returned
+    // 2. If not resolved, try ZoneMapping
+    if (!state) {
+      const deliveryZoneInfo = await getZoneForPincode(deliveryPincode);
+      if (deliveryZoneInfo) {
+        state = deliveryZoneInfo.stateName || '';
+        district = state === 'Tamil Nadu' ? 'Salem' : 'District';
+      }
+    }
+
+    // 3. Fallback to first-digit region mapping if still not resolved
+    if (!state) {
+      const firstDigit = deliveryPincode[0];
+      if (firstDigit === '6') {
+        state = 'Tamil Nadu';
+      } else if (firstDigit === '5') {
+        state = 'Karnataka';
+      } else if (firstDigit === '4') {
+        state = 'Maharashtra';
+      } else if (firstDigit === '3') {
+        state = 'Gujarat';
+      } else {
+        state = 'Delhi';
+      }
+      district = state === 'Tamil Nadu' ? 'Salem' : 'District';
+    }
+
     if (areas.length === 0) {
       areas = ['Salem Central', 'Town Delivery Hub', 'Suburbs Sector'];
     }
 
+    // Calculate dynamic state-based shipping rate
+    const cleanState = (state || '').toLowerCase().replace(/\s+/g, '');
+    let ratePerKg = 150;
+    if (cleanState.includes('tamilnadu') || cleanState === 'tn') {
+      ratePerKg = 50;
+    }
+
+    const freeShipping = await isFreeShippingActive();
+    const finalAmount = freeShipping ? 0 : Math.max(1, Math.ceil(weight || 0.5)) * ratePerKg;
+
+    const quotes = [
+      {
+        serviceType: 'Standard',
+        finalAmount: finalAmount,
+        estDays: cleanState.includes('tamilnadu') ? 2 : 5
+      }
+    ];
+
     res.json({
       success: true,
       available: true,
-      courierName: 'Professional Courier',
+      courierName: 'Standard Shipping',
       quotes,
       district,
       state,

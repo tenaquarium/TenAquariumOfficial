@@ -69,6 +69,16 @@ const orderSchema = new mongoose.Schema(
       enum: ['Pending', 'Processing', 'Paid'],
       default: 'Pending',
     },
+    dealerPayoutDetails: [
+      {
+        dealerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        totalAmount: { type: Number, default: 0 },
+        packingCharge: { type: Number, default: 0 },
+        initialPaid20: { type: Number, default: 0 },
+        remainingDue80: { type: Number, default: 0 },
+        status: { type: String, enum: ['Pending', 'Paid'], default: 'Pending' }
+      }
+    ],
     customOrderId: {
       type: String,
       unique: true,

@@ -152,8 +152,8 @@ const createOrder = async (req, res) => {
         else if (product.price < 2000) itemWeight = 1.0;
         else itemWeight = 2.0;
       } else if (product.category === 'Aquarium Fish') {
-        if (product.price < 250) itemWeight = 0.3;
-        else itemWeight = 1.0;
+        const isPair = (product.productName || '').toLowerCase().includes('pair');
+        itemWeight = isPair ? 0.28 : 0.14;
       } else if (product.category === 'Aquarium Plants') {
         itemWeight = 0.3;
       }
@@ -189,79 +189,39 @@ const createOrder = async (req, res) => {
     }
 
     // 3. Resolve Zone & Calculate Courier Rates
-    const ZoneMapping = require('../models/ZoneMapping');
-    const deliveryZoneInfo = await ZoneMapping.findOne({
-      pincodeStart: { $lte: shippingAddress.zip },
-      pincodeEnd: { $gte: shippingAddress.zip }
-    });
-    if (!deliveryZoneInfo) {
-      return res.status(400).json({ message: 'Professional Courier does not deliver to this pincode.' });
+    let stateName = shippingAddress.state || '';
+    if (!stateName) {
+      const ZoneMapping = require('../models/ZoneMapping');
+      const deliveryZoneInfo = await ZoneMapping.findOne({
+        pincodeStart: { $lte: shippingAddress.zip },
+        pincodeEnd: { $gte: shippingAddress.zip }
+      });
+      if (deliveryZoneInfo) {
+        stateName = deliveryZoneInfo.stateName || '';
+      }
     }
 
-    let selectedCourierName = 'Professional Courier';
-    let selectedServiceType = 'Surface';
-    if (courierService) {
-      if (courierService.includes(' - ')) {
-        const parts = courierService.split(' - ');
-        selectedCourierName = parts[0];
-        selectedServiceType = parts[1];
+    // Fallback based on first digit of zip if state name is still missing
+    if (!stateName) {
+      const firstDigit = shippingAddress.zip[0];
+      if (firstDigit === '6') {
+        stateName = 'Tamil Nadu';
+      } else if (firstDigit === '5') {
+        stateName = 'Karnataka';
+      } else if (firstDigit === '4') {
+        stateName = 'Maharashtra';
+      } else if (firstDigit === '3') {
+        stateName = 'Gujarat';
       } else {
-        selectedCourierName = courierService;
+        stateName = 'Delhi';
       }
     }
 
-    // Resolve Dealer Pincode
-    let pickupPincode = '636003';
-    const firstItem = orderItems[0];
-    const firstProduct = await Product.findById(firstItem.productId);
-    if (firstProduct) {
-      const dealer = await Dealer.findOne({ userId: firstProduct.dealerId });
-      if (dealer && dealer.address) {
-        const match = dealer.address.match(/\b\d{6}\b/);
-        if (match) pickupPincode = match[0];
-      }
+    const cleanState = (stateName || '').toLowerCase().replace(/\s+/g, '');
+    let ratePerKg = 150;
+    if (cleanState.includes('tamilnadu') || cleanState === 'tn') {
+      ratePerKg = 50;
     }
-
-    const pickupZoneInfo = await ZoneMapping.findOne({
-      pincodeStart: { $lte: pickupPincode },
-      pincodeEnd: { $gte: pickupPincode }
-    });
-    const fromZone = pickupZoneInfo ? pickupZoneInfo.zone : 'Zone A';
-    const toZone = deliveryZoneInfo.zone;
-
-    // Resolve Professional Courier Rates
-    const CourierRate = require('../models/CourierRate');
-    const rateCard = await CourierRate.findOne({
-      courierName: 'Professional Courier',
-      fromZone,
-      toZone,
-      shipmentType: 'Non-Document',
-      serviceType: selectedServiceType,
-      activeStatus: true
-    });
-
-    let computedCourierCharge = 0;
-    if (rateCard) {
-      const volumetricWeight = (15 * 10 * 10) / 5000;
-      const rawChargeableWeight = Math.max(totalWeight, volumetricWeight);
-      const chargeableWeight = Math.ceil(rawChargeableWeight * 2) / 2;
-
-      let baseCharge = rateCard.basePrice;
-      if (chargeableWeight > rateCard.baseWeight) {
-        const additionalWeight = chargeableWeight - rateCard.baseWeight;
-        const additionalKgSlabs = Math.ceil(additionalWeight);
-        baseCharge = rateCard.basePrice + (additionalKgSlabs * rateCard.additionalKgPrice);
-      }
-
-      const fuelCharge = Math.round((baseCharge * rateCard.fuelChargePercent) / 100 * 100) / 100;
-      const gst = Math.round(((baseCharge + fuelCharge) * rateCard.gstPercent) / 100 * 100) / 100;
-      computedCourierCharge = Math.round((baseCharge + fuelCharge + gst) * 100) / 100;
-    } else {
-      // Fallback programmatic rates if DB not seeded
-      computedCourierCharge = selectedServiceType === 'Surface' ? 60 : 110;
-    }
-
-    const packingVal = 59; // Enforced Packing charge of ₹59
 
     // Check if free shipping is active
     let freeShippingActive = false;
@@ -279,7 +239,9 @@ const createOrder = async (req, res) => {
       console.error('Error fetching settings for free shipping:', settingsErr.message);
     }
 
+    const computedCourierCharge = Math.max(1, Math.ceil(totalWeight)) * ratePerKg;
     const finalCourierCharge = freeShippingActive ? 0 : computedCourierCharge;
+    const packingVal = 59; // Enforced Packing charge of ₹59
     const finalTotalAmount = subtotalAmount + finalCourierCharge + packingVal;
 
     // Generate Custom Sequential Order ID: YYMMDDCCount
@@ -304,7 +266,7 @@ const createOrder = async (req, res) => {
       paymentMethod,
       paymentStatus: 'pending',
       orderStatus: 'Processing',
-      courierService: `${selectedCourierName} - ${selectedServiceType}`,
+      courierService: 'Standard Shipping',
       deliveryCharge: finalCourierCharge,
       packingCharge: packingVal,
       customOrderId,
@@ -316,6 +278,32 @@ const createOrder = async (req, res) => {
       orderData.paymentStatus = 'pending';
       orderData.qrPaymentExpiresAt = new Date(Date.now() + 300 * 1000); // 5 minutes active window
 
+      // Calculate dealerPayoutDetails before creating order
+      const dealerGroupAmount = {};
+      for (const item of orderItems) {
+        const did = item.dealerId.toString();
+        dealerGroupAmount[did] = (dealerGroupAmount[did] || 0) + (item.price * item.quantity);
+      }
+
+      const dealerPayoutDetails = [];
+      for (const did of Object.keys(dealerGroupAmount)) {
+        const totalAmount = dealerGroupAmount[did];
+        const packingCharge = packingVal; // default 59
+        const totalDealerDue = totalAmount + packingCharge;
+        const initialPaid20 = totalDealerDue * 0.20;
+        const remainingDue80 = totalDealerDue * 0.80;
+
+        dealerPayoutDetails.push({
+          dealerId: did,
+          totalAmount,
+          packingCharge,
+          initialPaid20,
+          remainingDue80,
+          status: 'Pending'
+        });
+      }
+      orderData.dealerPayoutDetails = dealerPayoutDetails;
+
       const order = await Order.create(orderData);
 
       // 1. Send SMS to Admin with full customer name and address
@@ -323,6 +311,19 @@ const createOrder = async (req, res) => {
       sendSMS(adminSmsMessage).catch(err => {
         console.error('Error sending admin order placement SMS:', err.message);
       });
+
+      // Send 20% payout SMS to Admin
+      for (const payout of order.dealerPayoutDetails) {
+        try {
+          const User = mongoose.model('User');
+          const dealerUser = await User.findById(payout.dealerId);
+          const dealerName = dealerUser ? dealerUser.name : 'Dealer';
+          const adminPayoutSms = `TENAQUARIUM Payout: Order #${order._id.toString().slice(-6)} placed. 20% Initial Payout due to Dealer ${dealerName}: Rs ${payout.initialPaid20.toFixed(0)} (Total Due: Rs ${(payout.totalAmount + payout.packingCharge).toFixed(0)}). Remaining 80%: Rs ${payout.remainingDue80.toFixed(0)}. Please pay immediately!`;
+          sendSMS(adminPayoutSms).catch(err => console.error('Error sending payout SMS:', err.message));
+        } catch (payoutErr) {
+          console.error('Error querying dealer user for SMS:', payoutErr.message);
+        }
+      }
 
       // 2. Group items by dealerId and email each dealer with customer details
       try {
@@ -681,6 +682,19 @@ const updateOrderStatus = async (req, res) => {
         cancelledBy: req.user.role,
         needBankDetails: true
       };
+      
+      // Send secure link email to customer
+      try {
+        const populatedOrderForMail = await Order.findById(order._id).populate('customerId');
+        if (populatedOrderForMail && populatedOrderForMail.customerId && populatedOrderForMail.customerId.email) {
+          const { sendCustomerRefundBankLinkEmail } = require('../utils/mail');
+          sendCustomerRefundBankLinkEmail(order, populatedOrderForMail.customerId.email).catch(err => {
+            console.error('Error sending refund bank link email:', err.message);
+          });
+        }
+      } catch (mailErr) {
+        console.error('Error querying customer for refund bank link email:', mailErr.message);
+      }
     }
 
     // Send status change email notifications to the customer
@@ -727,6 +741,24 @@ const updateOrderStatus = async (req, res) => {
         }
       } catch (extErr) {
         console.error('Failed to register shipment in external courier tracking registry:', extErr.message);
+      }
+    }
+
+    // Send admin SMS notification on courier dispatch
+    if ((orderStatus === 'Courier Dispatched' || orderStatus === 'Shipped') && prevOrderStatus !== 'Courier Dispatched' && prevOrderStatus !== 'Shipped') {
+      try {
+        const User = mongoose.model('User');
+        const dealerId = req.user._id;
+        const dealerUser = await User.findById(dealerId);
+        const dealerName = dealerUser ? dealerUser.name : 'Dealer';
+
+        const payout = order.dealerPayoutDetails.find(p => p.dealerId.toString() === dealerId.toString());
+        if (payout) {
+          const adminSmsText = `TENAQUARIUM Dispatch: Order #${order._id.toString().slice(-6)} has been dispatched by Dealer ${dealerName}. Initial 20% Paid: Rs ${payout.initialPaid20.toFixed(0)}. Remaining 80% due now: Rs ${payout.remainingDue80.toFixed(0)}. Packing charge: Rs ${payout.packingCharge.toFixed(0)}. Please settle payment!`;
+          sendSMS(adminSmsText).catch(err => console.error('Error sending dispatch SMS to admin:', err.message));
+        }
+      } catch (smsErr) {
+        console.error('Failed to send admin dispatch SMS:', smsErr.message);
       }
     }
 
@@ -1157,7 +1189,9 @@ const submitRefundBankDetails = async (req, res) => {
       .populate('products.productId');
 
     // 1. Send SMS to Admin
-    const adminSmsMessage = `TENAQUARIUM: Refund details submitted for Order #${order._id.toString().slice(-6)}. Cust: ${order.shippingAddress.name}. Bank: ${bankName}, Acc No: ${accountNumber}, IFSC: ${ifscCode}. Refund: Rs ${order.cancellationDetails.refundAmount.toFixed(0)}.`;
+    const productSummary = populatedOrder.products.map(p => `${p.productId?.productName || 'Product'} x ${p.quantity}`).join(', ');
+    const adminSmsMessage = `TENAQUARIUM Refund: Order #${order._id.toString().slice(-6)}. Amt: Rs ${order.cancellationDetails.refundAmount.toFixed(0)}. Cust: ${order.shippingAddress.name} (${order.shippingAddress.phone}). Items: [${productSummary}]. Bank: ${accountHolderName} | ${bankName} | Acc: ${accountNumber} | IFSC: ${ifscCode}. Addr: ${order.shippingAddress.address}, ${order.shippingAddress.city}. Reason: ${order.cancellationDetails.cancellationReason || 'Cancelled'}.`;
+    
     sendSMS(adminSmsMessage).catch(err => {
       console.error('Error sending admin refund SMS:', err.message);
     });

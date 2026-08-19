@@ -651,6 +651,64 @@ const sendAdminRefundNotificationEmail = async (order) => {
   }
 };
 
+const sendCustomerRefundBankLinkEmail = async (order, customerEmail) => {
+  try {
+    const orderDisplayId = order.customOrderId || order._id.toString().slice(-6);
+    const refundAmt = order.cancellationDetails?.refundAmount || order.totalAmount;
+    const cancelReason = order.cancellationDetails?.cancellationReason || 'Order Cancelled';
+    const link = `https://ten-aquarium-official.vercel.app/refund-bank-details/${order._id}`;
+
+    const mailOptions = {
+      from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM'}" <${process.env.SMTP_USER}>`,
+      to: customerEmail,
+      subject: `Action Required: Refund Bank Details for Cancelled Order #${orderDisplayId} - TENAQUARIUM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #ef4444; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #ef4444; margin: 0; font-size: 24px;">TENAQUARIUM</h2>
+            <p style="color: #64748b; margin: 5px 0 0; font-size: 12px;">Salem, Tamil Nadu</p>
+          </div>
+          <h3 style="color: #1e3a8a; text-align: center; margin-bottom: 20px;">⚠️ Action Required: Refund Bank Details</h3>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Dear Customer,</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+            Your Order <strong>#${orderDisplayId}</strong> has been cancelled. As the cancellation was initiated by the store/admin, you are eligible for a <strong>100% full refund</strong> of <strong>₹${refundAmt.toLocaleString()}</strong>.
+          </p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+            <strong>Cancellation Reason:</strong> ${cancelReason}
+          </p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+            To process your refund, please click the secure link below to submit your bank account details:
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${link}" style="background-color: #ef4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">
+              Submit Refund Bank Details
+            </a>
+          </div>
+          
+          <p style="color: #e11d48; font-size: 13px; font-weight: bold; text-align: center; margin-bottom: 20px;">
+            If the button doesn't work, copy and paste this URL into your browser:<br/>
+            <span style="font-weight: normal; color: #475569; font-size: 11px;">${link}</span>
+          </p>
+          
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+            Once you submit your details, the refund will be processed to your account.
+          </p>
+          
+          <p style="color: #334155; font-size: 15px; line-height: 1.6;">Thank you for your patience.</p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+          <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">TENAQUARIUM Customer Care | Salem, Tamil Nadu, India.</p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`Refund bank link email sent to ${customerEmail}`);
+  } catch (error) {
+    console.error(`Error sending refund bank link email:`, error.message);
+  }
+};
+
 module.exports = {
   sendInvoiceEmail,
   sendStatusEmail,
@@ -660,4 +718,5 @@ module.exports = {
   sendInquiryReplyEmail,
   sendDealerNewOrderEmail,
   sendAdminRefundNotificationEmail,
+  sendCustomerRefundBankLinkEmail,
 };
