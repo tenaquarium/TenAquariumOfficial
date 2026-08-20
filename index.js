@@ -39,6 +39,7 @@ const contactRoutes = require('./routes/contactRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const offerRoutes = require('./routes/offerRoutes');
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
@@ -55,6 +56,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/offers', offerRoutes);
 
 // Error Middleware
 app.use(notFound);

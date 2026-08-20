@@ -306,22 +306,24 @@ const createOrder = async (req, res) => {
 
       const order = await Order.create(orderData);
 
-      // 1. Send SMS to Admin with full customer name and address
-      const adminSmsMessage = `TENAQUARIUM: New Order #${order._id.toString().slice(-6)} of Rs ${finalTotalAmount} placed. Cust: ${shippingAddress.name}. Ph: ${shippingAddress.phone}. Addr: ${shippingAddress.address}, ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.zip}`;
-      sendSMS(adminSmsMessage).catch(err => {
-        console.error('Error sending admin order placement SMS:', err.message);
-      });
+      // 1. Send SMS to Admin with full customer name and address (Deferred for UPI-QR)
+      if (paymentMethod !== 'UPI-QR') {
+        const adminSmsMessage = `TENAQUARIUM: New Order #${order._id.toString().slice(-6)} of Rs ${finalTotalAmount} placed. Cust: ${shippingAddress.name}. Ph: ${shippingAddress.phone}. Addr: ${shippingAddress.address}, ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.zip}`;
+        sendSMS(adminSmsMessage).catch(err => {
+          console.error('Error sending admin order placement SMS:', err.message);
+        });
 
-      // Send 20% payout SMS to Admin
-      for (const payout of order.dealerPayoutDetails) {
-        try {
-          const User = mongoose.model('User');
-          const dealerUser = await User.findById(payout.dealerId);
-          const dealerName = dealerUser ? dealerUser.name : 'Dealer';
-          const adminPayoutSms = `TENAQUARIUM Payout: Order #${order._id.toString().slice(-6)} placed. 20% Initial Payout due to Dealer ${dealerName}: Rs ${payout.initialPaid20.toFixed(0)} (Total Due: Rs ${(payout.totalAmount + payout.packingCharge).toFixed(0)}). Remaining 80%: Rs ${payout.remainingDue80.toFixed(0)}. Please pay immediately!`;
-          sendSMS(adminPayoutSms).catch(err => console.error('Error sending payout SMS:', err.message));
-        } catch (payoutErr) {
-          console.error('Error querying dealer user for SMS:', payoutErr.message);
+        // Send 20% payout SMS to Admin
+        for (const payout of order.dealerPayoutDetails) {
+          try {
+            const User = mongoose.model('User');
+            const dealerUser = await User.findById(payout.dealerId);
+            const dealerName = dealerUser ? dealerUser.name : 'Dealer';
+            const adminPayoutSms = `TENAQUARIUM Payout: Order #${order._id.toString().slice(-6)} placed. 20% Initial Payout due to Dealer ${dealerName}: Rs ${payout.initialPaid20.toFixed(0)} (Total Due: Rs ${(payout.totalAmount + payout.packingCharge).toFixed(0)}). Remaining 80%: Rs ${payout.remainingDue80.toFixed(0)}. Please pay immediately!`;
+            sendSMS(adminPayoutSms).catch(err => console.error('Error sending payout SMS:', err.message));
+          } catch (payoutErr) {
+            console.error('Error querying dealer user for SMS:', payoutErr.message);
+          }
         }
       }
 
@@ -680,20 +682,41 @@ const updateOrderStatus = async (req, res) => {
         refundAmount: order.totalAmount,
         cancellationReason: req.body.cancellationReason || `Cancelled by ${req.user.role}`,
         cancelledBy: req.user.role,
-        needBankDetails: true
+        needBankDetails: order.paymentMethod === 'UPI-QR'
       };
       
-      // Send secure link email to customer
+      // Send secure link email to customer ONLY IF they paid via UPI
+      if (order.paymentMethod === 'UPI-QR') {
+        try {
+          const populatedOrderForMail = await Order.findById(order._id).populate('customerId');
+          if (populatedOrderForMail && populatedOrderForMail.customerId && populatedOrderForMail.customerId.email) {
+            const { sendCustomerRefundBankLinkEmail } = require('../utils/mail');
+            sendCustomerRefundBankLinkEmail(order, populatedOrderForMail.customerId.email).catch(err => {
+              console.error('Error sending refund bank link email:', err.message);
+            });
+          }
+        } catch (mailErr) {
+          console.error('Error querying customer for refund bank link email:', mailErr.message);
+        }
+      }
+
+      // Send cancellation SMS with secure refund registry link to customer
       try {
-        const populatedOrderForMail = await Order.findById(order._id).populate('customerId');
-        if (populatedOrderForMail && populatedOrderForMail.customerId && populatedOrderForMail.customerId.email) {
-          const { sendCustomerRefundBankLinkEmail } = require('../utils/mail');
-          sendCustomerRefundBankLinkEmail(order, populatedOrderForMail.customerId.email).catch(err => {
-            console.error('Error sending refund bank link email:', err.message);
+        const customerPhone = order.shippingAddress?.phone;
+        if (customerPhone) {
+          const cleanCustomerPhone = customerPhone.startsWith('+') ? customerPhone : `+91${customerPhone}`;
+          let smsText = `TENAQUARIUM: Your Order #${order._id.toString().slice(-6)} has been cancelled.`;
+          if (order.paymentMethod === 'UPI-QR') {
+            smsText += ` Please submit your bank details securely for a 100% refund: https://www.tenaquarium.com/#/refund-bank-details/${order._id}`;
+          } else {
+            smsText += ` No further action is required. Thank you!`;
+          }
+          sendSMS(smsText, cleanCustomerPhone).catch(err => {
+            console.error('Error sending customer cancellation SMS:', err.message);
           });
         }
-      } catch (mailErr) {
-        console.error('Error querying customer for refund bank link email:', mailErr.message);
+      } catch (smsErr) {
+        console.error('Error triggering customer cancellation SMS:', smsErr.message);
       }
     }
 
@@ -702,7 +725,7 @@ const updateOrderStatus = async (req, res) => {
       const populatedOrderForMail = await Order.findById(order._id).populate('customerId');
       if (populatedOrderForMail && populatedOrderForMail.customerId && populatedOrderForMail.customerId.email) {
         const { sendStatusEmail } = require('../utils/mail');
-        sendStatusEmail(populatedOrderForMail, populatedOrderForMail.customerId.email, orderStatus).catch(err => {
+        sendStatusEmail(order, populatedOrderForMail.customerId.email, orderStatus).catch(err => {
           console.error('Error sending status update email:', err.message);
         });
       }
@@ -797,6 +820,12 @@ const updateOrderStatus = async (req, res) => {
       sendSMS(customerSmsMessage, cleanCustomerPhone).catch((smsErr) => {
         console.error('Error sending customer order SMS from updateOrderStatus:', smsErr.message);
       });
+
+      if (order.paymentMethod === 'UPI-QR') {
+        sendPayoutAndPlacementSMS(order).catch((payoutErr) => {
+          console.error('Error sending deferred payout/placement SMS from updateOrderStatus:', payoutErr.message);
+        });
+      }
     }
 
     // Generate Delivery Notifications
@@ -878,6 +907,12 @@ const approveOrderSMS = async (req, res) => {
     sendSMS(customerSmsMessage, cleanCustomerPhone).catch((smsErr) => {
       console.error('Error sending customer order SMS:', smsErr.message);
     });
+
+    if (order.paymentMethod === 'UPI-QR') {
+      sendPayoutAndPlacementSMS(order).catch((payoutErr) => {
+        console.error('Error sending deferred payout/placement SMS from approveOrderSMS:', payoutErr.message);
+      });
+    }
 
     res.send(`
       <html>
@@ -1212,6 +1247,185 @@ const submitRefundBankDetails = async (req, res) => {
   }
 };
 
+const sendPayoutAndPlacementSMS = async (order) => {
+  // Send order placement SMS to admin (since it was deferred for UPI-QR)
+  if (order.paymentMethod === 'UPI-QR') {
+    const adminSmsMessage = `TENAQUARIUM: Paid Order #${order._id.toString().slice(-6)} of Rs ${order.totalAmount} placed & verified. Cust: ${order.shippingAddress.name}. Ph: ${order.shippingAddress.phone}. Addr: ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state} - ${order.shippingAddress.zip}`;
+    sendSMS(adminSmsMessage).catch(err => {
+      console.error('Error sending admin paid order SMS:', err.message);
+    });
+  }
+
+  // Send 20% payout SMS to Admin
+  for (const payout of order.dealerPayoutDetails) {
+    try {
+      const User = mongoose.model('User');
+      const dealerUser = await User.findById(payout.dealerId);
+      const dealerName = dealerUser ? dealerUser.name : 'Dealer';
+      const adminPayoutSms = `TENAQUARIUM Payout: Order #${order._id.toString().slice(-6)} placed. 20% Initial Payout due to Dealer ${dealerName}: Rs ${payout.initialPaid20.toFixed(0)} (Total Due: Rs ${(payout.totalAmount + payout.packingCharge).toFixed(0)}). Remaining 80%: Rs ${payout.remainingDue80.toFixed(0)}. Please pay immediately!`;
+      sendSMS(adminPayoutSms).catch(err => console.error('Error sending payout SMS:', err.message));
+    } catch (payoutErr) {
+      console.error('Error querying dealer user for SMS:', payoutErr.message);
+    }
+  }
+};
+
+// @desc    Validate customer uploaded payment screenshot
+// @route   POST /api/orders/:id/validate-screenshot
+// @access  Private/Customer
+const validateScreenshot = async (req, res) => {
+  const { paymentProofImage } = req.body;
+  if (!paymentProofImage) {
+    return res.status(400).json({ success: false, message: 'No screenshot image provided' });
+  }
+
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (!paymentProofImage.startsWith('data:image/')) {
+      return res.status(400).json({ success: false, message: 'Invalid file format. Please upload a valid image screenshot.' });
+    }
+
+    // Convert Base64 image to Buffer
+    const base64Data = paymentProofImage.replace(/^data:image\/\w+;base64,/, "");
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    if (imageBuffer.length < 5000) {
+      return res.status(400).json({ success: false, message: 'Uploaded file is too small to be a valid screenshot receipt.' });
+    }
+
+    // Perform OCR using local eng.traineddata
+    const worker = await createWorker('eng', 1, {
+      langPath: path.join(__dirname, '..'),
+      gzip: false,
+    });
+    const { data: { text } } = await worker.recognize(imageBuffer);
+    await worker.terminate();
+
+    const lowerText = text.toLowerCase();
+    const cleanedText = lowerText.replace(/[^a-z0-9]/g, '');
+
+    // 1. Payee Name Check
+    const hasPayee = lowerText.includes('ten aquarium') || 
+                      lowerText.includes('elavarasi') || 
+                      lowerText.includes('tenaquarium457') ||
+                      cleanedText.includes('tenaquarium') ||
+                      cleanedText.includes('elavarasi') ||
+                      cleanedText.includes('tenaquarium457');
+
+    // 2. Amount Check
+    const amountVal = order.totalAmount;
+    const amtStr = amountVal.toString();
+    const amtDecimal = amountVal.toFixed(2);
+    const amtComma = amountVal.toLocaleString('en-IN');
+
+    const hasAmount = lowerText.includes(amtStr) || 
+                      lowerText.includes(amtComma) || 
+                      lowerText.includes(amtDecimal) ||
+                      cleanedText.includes(amtStr.replace(/[^0-9]/g, '')) ||
+                      cleanedText.includes(amtDecimal.replace(/[^0-9]/g, ''));
+
+    // Helpers to generate dates and times
+    const generateDates = (d) => {
+      const dd = d.getDate().toString().padStart(2, '0');
+      const d_single = d.getDate().toString();
+      const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+      const m_single = (d.getMonth() + 1).toString();
+      const yyyy = d.getFullYear().toString();
+      const yy = yyyy.slice(-2);
+      
+      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const fullMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+      const mmm = months[d.getMonth()];
+      const mmmm = fullMonths[d.getMonth()];
+
+      return [
+        `${dd}-${mm}-${yyyy}`,
+        `${dd}/${mm}/${yyyy}`,
+        `${dd}-${mm}-${yy}`,
+        `${dd}/${mm}/${yy}`,
+        `${d_single}-${m_single}-${yyyy}`,
+        `${d_single}/${m_single}/${yyyy}`,
+        `${d_single}-${m_single}-${yy}`,
+        `${d_single}/${m_single}/${yy}`,
+        `${dd} ${mmm} ${yyyy}`,
+        `${d_single} ${mmm} ${yyyy}`,
+        `${dd} ${mmmm} ${yyyy}`,
+        `${d_single} ${mmmm} ${yyyy}`,
+        `${mmm} ${dd}, ${yyyy}`,
+        `${mmmm} ${dd}, ${yyyy}`,
+        `${dd} ${mmm}`,
+        `${mmm} ${dd}`,
+        `${yyyy}-${mm}-${dd}`
+      ];
+    };
+
+    const generateTimes = (nowTime, minutesRange = 30) => {
+      const timeStrings = [];
+      for (let i = 0; i <= minutesRange; i++) {
+        const t = new Date(nowTime.getTime() - i * 60 * 1000);
+        const hh = t.getHours().toString().padStart(2, '0');
+        const mm = t.getMinutes().toString().padStart(2, '0');
+        timeStrings.push(`${hh}:${mm}`);
+
+        let h12 = t.getHours() % 12;
+        h12 = h12 ? h12 : 12;
+        const mm12 = t.getMinutes().toString().padStart(2, '0');
+        const ampm = t.getHours() >= 12 ? 'pm' : 'am';
+
+        timeStrings.push(`${h12}:${mm12}`);
+        timeStrings.push(`${h12}:${mm12} ${ampm}`);
+        timeStrings.push(`${h12}:${mm12}${ampm}`);
+      }
+      return timeStrings;
+    };
+
+    // 3. Date Check
+    const dateStrings = [];
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+    dateStrings.push(...generateDates(today));
+    dateStrings.push(...generateDates(yesterday));
+
+    const hasDate = dateStrings.some(dStr => {
+      const cleanedDStr = dStr.replace(/[^a-z0-9]/g, '');
+      return lowerText.includes(dStr) || (cleanedDStr && cleanedText.includes(cleanedDStr));
+    });
+
+    // 4. Time Check
+    const timeStrings = [];
+    const nowTime = new Date();
+    timeStrings.push(...generateTimes(nowTime, 30));
+
+    const hasTime = timeStrings.some(tStr => {
+      const cleanedTStr = tStr.replace(/[^a-z0-9]/g, '');
+      return lowerText.includes(tStr) || (cleanedTStr && cleanedText.includes(cleanedTStr));
+    });
+
+    const isValid = hasPayee && hasAmount && hasDate && hasTime;
+
+    return res.json({
+      success: isValid,
+      message: isValid ? 'Screenshot validated successfully!' : 'Verification failed: Some fields could not be matched.',
+      errors: {
+        payee: !hasPayee,
+        amount: !hasAmount,
+        date: !hasDate,
+        time: !hasTime
+      },
+      extractedText: text
+    });
+
+  } catch (error) {
+    console.error('Error during screenshot OCR validation:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   submitPaymentProof,
@@ -1227,4 +1441,5 @@ module.exports = {
   markRefundCompleted,
   updateDealerPayoutStatus,
   submitRefundBankDetails,
+  validateScreenshot,
 };

@@ -276,18 +276,45 @@ const checkAvailability = async (req, res) => {
     const freeShipping = await isFreeShippingActive();
     const finalAmount = freeShipping ? 0 : Math.max(1, Math.ceil(weight || 0.5)) * ratePerKg;
 
-    const quotes = [
-      {
+    // Validate Courier Availability (Professional Courier & ST Courier)
+    // ST Courier is only available for South states (pincode starts with 5 or 6, meaning Zone A and Zone B)
+    // Professional Courier is available for Zone A, B, C, D, E (all mapped Indian pincodes)
+    const isSTCourierAvailable = /^[5-6]/.test(deliveryPincode);
+    const hasZoneMapped = !!(await getZoneForPincode(deliveryPincode));
+
+    const quotes = [];
+
+    // ST Courier Quote
+    if (isSTCourierAvailable && hasZoneMapped) {
+      quotes.push({
+        courierName: 'ST Courier',
         serviceType: 'Standard',
         finalAmount: finalAmount,
+        estDays: cleanState.includes('tamilnadu') ? 2 : 4
+      });
+    }
+
+    // Professional Courier Quote
+    if (hasZoneMapped) {
+      quotes.push({
+        courierName: 'Professional Courier',
+        serviceType: 'Standard',
+        finalAmount: finalAmount + 10,
         estDays: cleanState.includes('tamilnadu') ? 2 : 5
-      }
-    ];
+      });
+    }
+
+    if (quotes.length === 0) {
+      return res.json({
+        success: false,
+        message: 'No delivery service available for this pincode via ST Courier or Professional Courier.'
+      });
+    }
 
     res.json({
       success: true,
       available: true,
-      courierName: 'Standard Shipping',
+      courierName: quotes[0].courierName,
       quotes,
       district,
       state,

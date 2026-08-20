@@ -1,14 +1,29 @@
 const Product = require('../models/Product');
 const Dealer = require('../models/Dealer');
 const User = require('../models/User');
+const Offer = require('../models/Offer');
 
 // @desc    Get all products with advanced filters
 // @route   GET /api/products
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    const { keyword, category, priceMin, priceMax, rating, sort } = req.query;
+    const { keyword, category, priceMin, priceMax, rating, sort, offerId } = req.query;
     let query = {};
+
+    // Filter by offerId
+    if (offerId) {
+      const offer = await Offer.findById(offerId);
+      if (offer) {
+        if (offer.offerScope === 'category' && offer.targetCategories?.length > 0) {
+          query.category = { $in: offer.targetCategories };
+        } else if (offer.offerScope === 'product' && offer.targetProducts?.length > 0) {
+          query._id = { $in: offer.targetProducts };
+        } else if (offer.offerScope === 'store_wide') {
+          query.dealerId = offer.dealerId;
+        }
+      }
+    }
 
     // Filter by keyword (product name)
     if (keyword) {
@@ -17,7 +32,14 @@ const getProducts = async (req, res) => {
 
     // Filter by category
     if (category && category !== 'All') {
-      query.category = category;
+      if (query.category && query.category.$in) {
+        // If offerId already set a category filter, we might intersect them, or just let category override/and
+        // For simplicity, we override or you can do $and.
+        // Usually, if user selects a category, it overrides.
+        query.category = category;
+      } else {
+        query.category = category;
+      }
     }
 
     // Filter by price

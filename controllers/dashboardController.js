@@ -76,15 +76,12 @@ const getDealerStats = async (req, res) => {
     const products = await Product.find({ dealerId: req.user._id });
     const uniqueNames = new Set(products.map(p => p.productName.trim().toLowerCase()));
     const totalProducts = uniqueNames.size;
-    
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
 
-    // Find all paid orders containing dealer's items that are at least 3 hours old
+    // Find all paid orders containing dealer's items
     const orders = await Order.find({
       'products.dealerId': req.user._id,
       paymentStatus: 'paid',
-      orderStatus: { $ne: 'Cancelled' },
-      createdAt: { $lte: threeHoursAgo }
+      orderStatus: { $ne: 'Cancelled' }
     });
 
     const totalOrdersCount = orders.length;
@@ -112,7 +109,7 @@ const getDealerStats = async (req, res) => {
         $match: {
           paymentStatus: 'paid',
           orderStatus: { $ne: 'Cancelled' },
-          createdAt: { $gte: sixMonthsAgo, $lte: threeHoursAgo },
+          createdAt: { $gte: sixMonthsAgo },
           'products.dealerId': req.user._id
         }
       },

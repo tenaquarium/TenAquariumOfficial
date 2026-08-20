@@ -255,6 +255,9 @@ const sendStatusEmail = async (order, customerEmail, status) => {
     } else if (status === 'Refund Completed') {
       const refundAmt = order.cancellationDetails?.refundAmount || order.totalAmount;
       statusMsg = `Good news! Your refund of <strong>₹${refundAmt.toLocaleString()}</strong> has been successfully processed and credited to your bank account. Please allow up to 1-2 business days for it to reflect in your bank statement.`;
+    } else if (status === 'Cancelled') {
+      const reason = order.cancellationDetails?.cancellationReason || 'Order was cancelled by the store.';
+      statusMsg = `Your order has been cancelled.<br/><br/><strong>Reason:</strong> ${reason}`;
     } else {
       statusMsg = `The status of your order has been updated to: <strong>${status}</strong>.`;
     }
@@ -656,7 +659,7 @@ const sendCustomerRefundBankLinkEmail = async (order, customerEmail) => {
     const orderDisplayId = order.customOrderId || order._id.toString().slice(-6);
     const refundAmt = order.cancellationDetails?.refundAmount || order.totalAmount;
     const cancelReason = order.cancellationDetails?.cancellationReason || 'Order Cancelled';
-    const link = `https://ten-aquarium-official.vercel.app/refund-bank-details/${order._id}`;
+    const link = `https://www.tenaquarium.com/#/refund-bank-details/${order._id}`;
 
     const mailOptions = {
       from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM'}" <${process.env.SMTP_USER}>`,
