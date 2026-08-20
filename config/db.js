@@ -1,9 +1,30 @@
 const mongoose = require('mongoose');
 
+// Global cache for Vercel Serverless
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+    };
+    cached.promise = mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://tenaquarium_db_user:tenaquariumdb@tenaquariumcluster.1tpyeeh.mongodb.net/tenaquarium', opts).then((mongoose) => {
+      console.log(`MongoDB Connected: ${mongoose.connection.host}`);
+      return mongoose;
+    });
+  }
+
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://tenaquarium_db_user:tenaquariumdb@tenaquariumcluster.1tpyeeh.mongodb.net/tenaquarium');
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    cached.conn = await cached.promise;
+
     
     // Automatically seed default categories if none exist
     const { seedDefaultCategories } = require('../controllers/categoryController');
