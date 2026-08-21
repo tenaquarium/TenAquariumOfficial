@@ -3,6 +3,12 @@ const CourierRate = require('../models/CourierRate');
 const Settings = require('../models/Settings');
 
 const isFreeShippingActive = async () => {
+  // Hard expiration date for free shipping campaign
+  const campaignExpiration = new Date('2026-09-01T00:00:00+05:30');
+  if (new Date() >= campaignExpiration) {
+    return false;
+  }
+
   const config = await Settings.findOne({ key: 'freeShipping' });
   if (config && config.value && config.value.status === 'ON') {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
