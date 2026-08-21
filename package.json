@@ -9,6 +9,7 @@
     "seed": "node seed.js"
   },
   "dependencies": {
+    "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^2.4.3",
     "blockhash-core": "^0.1.0",
     "cors": "^2.8.5",
