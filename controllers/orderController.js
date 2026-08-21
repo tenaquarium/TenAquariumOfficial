@@ -190,18 +190,8 @@ const createOrder = async (req, res) => {
 
     // 3. Resolve Zone & Calculate Courier Rates
     let stateName = shippingAddress.state || '';
-    if (!stateName) {
-      const ZoneMapping = require('../models/ZoneMapping');
-      const deliveryZoneInfo = await ZoneMapping.findOne({
-        pincodeStart: { $lte: shippingAddress.zip },
-        pincodeEnd: { $gte: shippingAddress.zip }
-      });
-      if (deliveryZoneInfo) {
-        stateName = deliveryZoneInfo.stateName || '';
-      }
-    }
 
-    // Fallback based on first digit of zip if state name is still missing
+    // Fallback based on first digit of zip if state name is missing
     if (!stateName) {
       const firstDigit = shippingAddress.zip[0];
       if (firstDigit === '6') {
