@@ -41,6 +41,10 @@ const productSchema = new mongoose.Schema(
       type: [String],
       required: [true, 'Please add at least one product image URL'],
     },
+    imageHashes: {
+      type: [String],
+      index: true,
+    },
     dealerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

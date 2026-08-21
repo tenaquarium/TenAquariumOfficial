@@ -2,6 +2,7 @@ const Product = require('../models/Product');
 const Dealer = require('../models/Dealer');
 const User = require('../models/User');
 const Offer = require('../models/Offer');
+const { processImage, hammingDistance } = require('../utils/imageUtils');
 
 // @desc    Get all products with advanced filters
 // @route   GET /api/products
@@ -242,6 +243,32 @@ const createProduct = async (req, res) => {
       });
     }
 
+    // --- NEW: Image Optimization & Duplicate Detection ---
+    const optimizedImages = [];
+    const imageHashes = [];
+    
+    // Fetch all existing hashes for this dealer to detect cross-product duplicates
+    const dealerProducts = await Product.find({ dealerId: req.user._id }).select('imageHashes');
+    const existingHashes = dealerProducts.flatMap(p => p.imageHashes || []);
+
+    for (const base64Image of images) {
+      // Process image using sharp + blockhash-core
+      const { optimizedImage, hash } = await processImage(base64Image);
+      
+      // Check for duplicate visual (Hamming distance < 10 indicates highly similar)
+      const isDuplicate = existingHashes.some(existingHash => hammingDistance(existingHash, hash) < 10);
+      
+      if (isDuplicate) {
+        return res.status(400).json({
+          message: 'One of the uploaded images is a visual duplicate of an image you have already uploaded.'
+        });
+      }
+
+      optimizedImages.push(optimizedImage);
+      imageHashes.push(hash);
+    }
+    // --- END NEW ---
+
     const hasVariantsBool = hasVariants === true || hasVariants === 'true';
     let validatedVariants = [];
     let calculatedStock = Number(stock) || 0;
@@ -274,7 +301,8 @@ const createProduct = async (req, res) => {
       price,
       stock: calculatedStock,
       minQuantity: minQuantity !== undefined ? Number(minQuantity) : 2,
-      images: images || ['https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=500'],
+      images: optimizedImages,
+      imageHashes,
       dealerId: req.user._id,
       isReturnable: isReturnable !== undefined ? isReturnable : true,
       hasVariants: hasVariantsBool,
