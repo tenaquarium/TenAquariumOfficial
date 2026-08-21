@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
@@ -12,16 +15,37 @@ connectDB();
 
 const app = express();
 
-// Enable CORS
-app.use(cors());
+// 1. Security Headers (Helmet)
+app.use(helmet());
 
-// Body Parser
+// 2. Strict CORS Policy
+app.use(cors({
+  origin: ['https://www.tenaquarium.com', 'http://localhost:5173'], // Add production domain
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 3. API Rate Limiting (DDoS & Brute Force Protection)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // Limit each IP to 300 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api', apiLimiter);
+
+// 4. Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// 5. NoSQL Injection Defense (Sanitize inputs)
+app.use(mongoSanitize());
+
 // Root Route
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to TENAQUARIUM API Server' });
+  res.json({ message: 'Welcome to TENAQUARIUM API Server (Secured)' });
 });
 
 // Import Routes
