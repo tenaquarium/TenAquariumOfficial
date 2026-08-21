@@ -2,7 +2,6 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 const Dealer = require('../models/Dealer');
-const Notification = require('../models/Notification');
 const mongoose = require('mongoose');
 const { sendSMS } = require('../utils/sms');
 const Settings = require('../models/Settings');
@@ -353,22 +352,12 @@ const createOrder = async (req, res) => {
         console.error('Failed to notify dealers via email:', dealerEmailErr.message);
       }
 
-      // Create notification for customer
-      await Notification.create({
-        userId: req.user._id,
-        message: `Your payment request for order #${order._id.toString().slice(-6)} of ₹${finalTotalAmount.toLocaleString()} has been initiated. Please complete the UPI QR payment within 5 minutes.`,
-        link: `/customer/dashboard?review=${order.products[0]?.productId}`
-      });
+            
 
-      // Create notification for admin
-      const User = mongoose.model('User');
+            const User = mongoose.model('User');
       const admins = await User.find({ role: 'admin' });
       for (const admin of admins) {
-        await Notification.create({
-          userId: admin._id,
-          message: `NEW UPI QR ORDER: Order #${order._id.toString().slice(-6)} of ₹${finalTotalAmount.toLocaleString()} is pending. Verification required.`,
-          link: `/admin/dashboard`
-        });
+        
       }
 
       return res.status(201).json({
@@ -423,11 +412,7 @@ const submitPaymentProof = async (req, res) => {
     const User = mongoose.model('User');
     const admins = await User.find({ role: 'admin' });
     for (const admin of admins) {
-      await Notification.create({
-        userId: admin._id,
-        message: `UPI PROOF SUBMITTED: Order #${order._id.toString().slice(-6)} of ₹${order.totalAmount.toLocaleString()} has submitted a payment screenshot. Verify immediately!`,
-        link: `/admin/dashboard`
-      });
+      
     }
 
     // Send real urgent SMS notification to Admin in the background
@@ -500,18 +485,12 @@ const cancelExpiredOrders = async () => {
 
     if (expiredOrders.length > 0) {
       const Product = require('../models/Product');
-      const Notification = require('../models/Notification');
-      for (const order of expiredOrders) {
+            for (const order of expiredOrders) {
         order.paymentStatus = 'failed';
         order.orderStatus = 'Cancelled';
         await order.save();
 
-        // Create notification for customer
-        await Notification.create({
-          userId: order.customerId,
-          message: `Your payment window for order #${order._id.toString().slice(-6)} has expired. Order cancelled.`,
-          link: '/customer/dashboard'
-        });
+                
       }
     }
   } catch (err) {
@@ -818,21 +797,15 @@ const updateOrderStatus = async (req, res) => {
       }
     }
 
-    // Generate Delivery Notifications
-    if (orderStatus === 'Delivered') {
+        if (orderStatus === 'Delivered') {
       try {
         for (const item of order.products) {
           const productObj = await Product.findById(item.productId);
           const name = productObj ? productObj.productName : 'your product';
-          await Notification.create({
-            userId: order.customerId,
-            message: `Your order containing '${name}' has been delivered! Please tap here to leave your review and rating.`,
-            link: `/customer/dashboard?review=${item.productId}`
-          });
+          
         }
       } catch (err) {
-        console.error('Error creating delivery notifications:', err);
-      }
+              }
     }
 
     res.json(updatedOrder);
@@ -883,12 +856,7 @@ const approveOrderSMS = async (req, res) => {
       console.error('Error clearing cart in approveOrderSMS:', cartErr.message);
     }
 
-    // Create notification for customer
-    await Notification.create({
-      userId: order.customerId,
-      message: `Your payment for order #${order._id.toString().slice(-6)} has been verified and approved by admin. Status: Processing.`,
-      link: '/customer/dashboard'
-    });
+        
 
     // Send customer order confirmation SMS in the background
     const customerPhone = order.shippingAddress.phone;
@@ -944,12 +912,7 @@ const rejectOrderSMS = async (req, res) => {
     order.orderStatus = 'Cancelled';
     await order.save();
 
-    // Create notification for customer
-    await Notification.create({
-      userId: order.customerId,
-      message: `Your payment for order #${order._id.toString().slice(-6)} was rejected by admin. Order cancelled.`,
-      link: '/customer/dashboard'
-    });
+        
 
     res.send(`
       <html>

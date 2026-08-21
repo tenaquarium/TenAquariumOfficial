@@ -1,7 +1,6 @@
 const Offer = require('../models/Offer');
 const Product = require('../models/Product');
 const User = require('../models/User');
-const Notification = require('../models/Notification');
 const { sendSMS } = require('../utils/sms');
 
 // Helper to mask emails
@@ -161,15 +160,7 @@ const createOffer = async (req, res) => {
     if (finalStatus === 'SUBMITTED') {
       const admins = await User.find({ role: 'admin' });
       for (const admin of admins) {
-        await Notification.create({
-          userId: admin._id,
-          dealerId: dealerId,
-          offerId: offer._id,
-          type: 'DEALER_OFFER_SUBMITTED',
-          title: 'NEW DEALER OFFER',
-          message: `Dealer ${req.user.name || req.user.dealerProfile?.businessName || 'Unknown'} submitted a new offer: "${offerName}"`,
-          link: `/admin/dashboard?tab=offers&offerId=${offer._id}`
-        });
+        
         // Call sendSMS directly. If admin.phone is undefined, sms.js uses ADMIN_PHONE_NUMBER automatically.
         sendSMS(`New Dealer Offer: "${offerName}" was submitted for your review by ${req.user.name || 'a dealer'}. Login to approve.`, admin.phone);
       }
@@ -395,15 +386,7 @@ const updateOffer = async (req, res) => {
     if (finalStatus === 'SUBMITTED') {
       const admins = await User.find({ role: 'admin' });
       for (const admin of admins) {
-        await Notification.create({
-          userId: admin._id,
-          dealerId: req.user._id,
-          offerId: offer._id,
-          type: 'DEALER_OFFER_SUBMITTED',
-          title: 'DEALER OFFER RE-SUBMITTED',
-          message: `Dealer ${req.user.name || req.user.dealerProfile?.businessName || 'Unknown'} re-submitted offer: "${offerName}" for review`,
-          link: `/admin/dashboard?tab=offers&offerId=${offer._id}`
-        });
+        
         // Call sendSMS directly so it falls back to ADMIN_PHONE_NUMBER if admin.phone is empty
         sendSMS(`Dealer Offer Re-submitted: "${offerName}" was re-submitted for your review by ${req.user.name || 'a dealer'}.`, admin.phone);
       }
@@ -528,14 +511,7 @@ const approveOffer = async (req, res) => {
 
     await offer.save();
 
-    await Notification.create({
-      userId: offer.dealerId, // notify dealer
-      offerId: offer._id,
-      type: 'OFFER_APPROVED',
-      title: 'Offer Approved',
-      message: `Your offer "${offer.offerName}" has been approved and will become active on the scheduled start date.`,
-      link: `/dealer/dashboard?tab=offers&offerId=${offer._id}`
-    });
+    
 
     const dealer = await User.findById(offer.dealerId);
     if (dealer && dealer.phone) {
@@ -569,14 +545,7 @@ const rejectOffer = async (req, res) => {
 
     await offer.save();
 
-    await Notification.create({
-      userId: offer.dealerId, // notify dealer
-      offerId: offer._id,
-      type: 'OFFER_REJECTED',
-      title: 'Offer Rejected',
-      message: `Your offer "${offer.offerName}" was rejected. Reason: ${rejectionReason}`,
-      link: `/dealer/dashboard?tab=offers&offerId=${offer._id}`
-    });
+    
 
     const dealer = await User.findById(offer.dealerId);
     if (dealer && dealer.phone) {
