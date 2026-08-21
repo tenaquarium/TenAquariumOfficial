@@ -105,6 +105,14 @@ const getProducts = async (req, res) => {
       };
     });
 
+    // Fetch active offers from the Offer model
+    const now = new Date();
+    const activeOffers = await Offer.find({
+      status: 'APPROVED',
+      startDateTime: { $lte: now },
+      endDateTime: { $gte: now }
+    });
+
     // Filter duplicates by name per dealer
     const seenDealerProducts = new Set();
     const uniqueProducts = [];
@@ -116,9 +124,30 @@ const getProducts = async (req, res) => {
         seenDealerProducts.add(nameKey);
         
         const prodObj = prod.toObject();
-        prodObj.dealerOffer = dealerOffersMap[dealerIdStr] || {
-          discountPercentage: 0,
-          customOfferText: '',
+        
+        let bestDiscount = dealerOffersMap[dealerIdStr]?.discountPercentage || 0;
+        let customOfferText = dealerOffersMap[dealerIdStr]?.customOfferText || '';
+
+        // Check if any active offer applies to this specific product
+        for (const offer of activeOffers) {
+          if (offer.dealerId.toString() !== dealerIdStr) continue;
+          
+          let applies = false;
+          if (offer.offerScope === 'store' || offer.offerScope === 'store_wide') applies = true;
+          if (offer.offerScope === 'category' && offer.targetCategories && offer.targetCategories.includes(prod.category)) applies = true;
+          if (offer.offerScope === 'product' && offer.targetProducts && offer.targetProducts.map(p => p.toString()).includes(prod._id.toString())) applies = true;
+
+          if (applies) {
+            if (offer.benefitType === 'percentage' && offer.benefitValue > bestDiscount) {
+              bestDiscount = offer.benefitValue;
+              customOfferText = offer.offerName;
+            }
+          }
+        }
+
+        prodObj.dealerOffer = {
+          discountPercentage: bestDiscount,
+          customOfferText: customOfferText,
         };
         
         uniqueProducts.push(prodObj);
