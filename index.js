@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
+const { injectSpeedInsights } = require('@vercel/speed-insights');
 
 // Load environment variables
 dotenv.config();
@@ -83,6 +84,9 @@ app.use('/api/offers', offerRoutes);
 // Error Middleware
 app.use(notFound);
 app.use(errorHandler);
+
+// Initialize Vercel Speed Insights
+injectSpeedInsights();
 
 const PORT = process.env.PORT || 5000;
 
