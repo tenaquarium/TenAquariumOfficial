@@ -9,7 +9,7 @@ const { processImage, hammingDistance } = require('../utils/imageUtils');
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    const { keyword, category, priceMin, priceMax, rating, sort, offerId } = req.query;
+    const { keyword, category, priceMin, priceMax, rating, sort, offerId, page, limit } = req.query;
     let query = {};
 
     // Filter by offerId
@@ -70,7 +70,7 @@ const getProducts = async (req, res) => {
       }
     }
 
-    let apiQuery = Product.find(query).populate('dealerId', 'name email phone');
+    let apiQuery = Product.find(query).select('-imageHashes').populate('dealerId', 'name email phone');
 
     // Sorting
     if (sort) {
@@ -91,6 +91,10 @@ const getProducts = async (req, res) => {
       apiQuery = apiQuery.sort({ createdAt: -1 }); // Default to newest
     }
 
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 100;
+    const skip = (pageNum - 1) * limitNum;
+    apiQuery = apiQuery.skip(skip).limit(limitNum);
     const products = await apiQuery;
     
     // Fetch active dealers matching these products to attach discount details
