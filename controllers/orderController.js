@@ -827,7 +827,29 @@ const approveOrderSMS = async (req, res) => {
     order.paymentStatus = 'paid';
     order.orderStatus = 'Processing';
     order.qrPaymentApprovedByAdmin = true;
+    if (order.paymentDetails) {
+      order.paymentDetails.status = 'SUCCESS';
+      order.paymentDetails.paidAt = new Date();
+    }
     await order.save();
+
+    // Instant SSE push to customer's open checkout window (< 10ms)
+    try {
+      const { notifyPaymentClients } = require('./paymentController');
+      notifyPaymentClients(order._id, {
+        type: 'PAYMENT_VERIFIED',
+        isPaid: true,
+        paymentStatus: 'PAID',
+        orderStatus: 'PLACED',
+        orderId: order._id,
+        customOrderId: order.customOrderId || order._id.toString().slice(-6),
+        totalAmount: order.totalAmount,
+        amount: order.totalAmount,
+        paidAt: new Date()
+      });
+    } catch (e) {
+      console.warn('SSE client notification failed:', e.message);
+    }
 
     // Send invoice PDF email to customer upon approval
     try {
@@ -843,28 +865,30 @@ const approveOrderSMS = async (req, res) => {
     }
 
     // Deduct stock upon payment approval
-    for (const item of order.products) {
-      await deductProductStock(item.productId, item.color, item.quantity);
+    for (const item of order.products || []) {
+      if (item.productId) {
+        await deductProductStock(item.productId, item.color, item.quantity);
+      }
     }
 
     // Clear customer cart
     try {
-      if (!order.isDirectBuy) {
+      if (!order.isDirectBuy && order.customerId) {
         await Cart.findOneAndUpdate({ customerId: order.customerId }, { products: [] });
       }
     } catch (cartErr) {
       console.error('Error clearing cart in approveOrderSMS:', cartErr.message);
     }
 
-        
-
     // Send customer order confirmation SMS in the background
-    const customerPhone = order.shippingAddress.phone;
-    const cleanCustomerPhone = customerPhone.startsWith('+') ? customerPhone : `+91${customerPhone}`;
-    const customerSmsMessage = `Tenaq: Ord #${order._id.toString().slice(-6)} (₹${order.totalAmount.toFixed(0)}) placed successfully! Shipped via ${order.courierService || 'Standard Courier'}.`;
-    sendSMS(customerSmsMessage, cleanCustomerPhone).catch((smsErr) => {
-      console.error('Error sending customer order SMS:', smsErr.message);
-    });
+    const customerPhone = order.shippingAddress?.phone || order.customerId?.phone;
+    if (customerPhone) {
+      const cleanCustomerPhone = customerPhone.startsWith('+') ? customerPhone : `+91${customerPhone}`;
+      const customerSmsMessage = `Tenaq: Ord #${order._id.toString().slice(-6)} (₹${order.totalAmount.toFixed(0)}) placed successfully! Shipped via ${order.courierService || 'Standard Courier'}.`;
+      sendSMS(customerSmsMessage, cleanCustomerPhone).catch((smsErr) => {
+        console.error('Error sending customer order SMS:', smsErr.message);
+      });
+    }
 
     if (order.paymentMethod === 'UPI-QR') {
       sendPayoutAndPlacementSMS(order).catch((payoutErr) => {
@@ -873,21 +897,25 @@ const approveOrderSMS = async (req, res) => {
     }
 
     res.send(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>Order Approved</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Order Approved - TEN Aquarium</title>
           <style>
-            body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #f0fdf4; color: #166534; }
-            .card { max-width: 440px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #bbf7d0; }
-            h1 { font-size: 28px; margin-bottom: 10px; color: #15803d; }
-            p { font-size: 16px; color: #166534; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background-color: #f0fdf4; color: #166534; margin: 0; }
+            .card { max-width: 440px; margin: 40px auto; background: white; padding: 36px 24px; border-radius: 20px; box-shadow: 0 10px 25px rgba(22, 101, 52, 0.1); border: 1.5px solid #86efac; }
+            h1 { font-size: 26px; margin-bottom: 12px; color: #15803d; font-weight: 800; }
+            p { font-size: 15px; color: #166534; line-height: 1.5; margin: 0 0 10px; }
+            .badge { display: inline-block; background: #dcfce7; color: #166534; font-weight: 800; padding: 6px 14px; border-radius: 20px; font-size: 14px; margin-bottom: 16px; }
           </style>
         </head>
         <body>
           <div class="card">
-            <h1>✓ Order Approved</h1>
-            <p>Order <strong>#${order._id.toString().slice(-6)}</strong> has been successfully marked as <strong>PAID</strong>.</p>
-            <p>Customer will see this update instantly on their checkout screen.</p>
+            <div class="badge">✓ Payment Confirmed</div>
+            <h1>Order Approved Successfully</h1>
+            <p>Order <strong>#${order.customOrderId || order._id.toString().slice(-6)}</strong> is now marked as <strong>PAID</strong>.</p>
+            <p>The customer's screen has automatically updated to <strong>Order Placed Successfully</strong>.</p>
           </div>
         </body>
       </html>
@@ -907,35 +935,152 @@ const rejectOrderSMS = async (req, res) => {
       return res.status(404).send('<h1>Error: Order not found</h1>');
     }
 
-    const prevOrderStatus = order.orderStatus;
     order.paymentStatus = 'failed';
     order.orderStatus = 'Cancelled';
+    if (order.paymentDetails) {
+      order.paymentDetails.status = 'FAILED';
+    }
     await order.save();
 
-        
+    // Instant SSE push to customer's open checkout window (< 10ms)
+    try {
+      const { notifyPaymentClients } = require('./paymentController');
+      notifyPaymentClients(order._id, {
+        type: 'PAYMENT_REJECTED',
+        isPaid: false,
+        paymentStatus: 'failed',
+        orderStatus: 'Cancelled',
+        orderId: order._id,
+        customOrderId: order.customOrderId || order._id.toString().slice(-6),
+        reason: 'Payment was not received in merchant bank account'
+      });
+    } catch (e) {
+      console.warn('SSE client notification failed:', e.message);
+    }
 
     res.send(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>Order Rejected</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Order Rejected - TEN Aquarium</title>
           <style>
-            body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #fef2f2; color: #991b1b; }
-            .card { max-width: 440px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #fecaca; }
-            h1 { font-size: 28px; margin-bottom: 10px; color: #dc2626; }
-            p { font-size: 16px; color: #991b1b; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background-color: #fef2f2; color: #991b1b; margin: 0; }
+            .card { max-width: 440px; margin: 40px auto; background: white; padding: 36px 24px; border-radius: 20px; box-shadow: 0 10px 25px rgba(153, 27, 27, 0.1); border: 1.5px solid #fca5a5; }
+            h1 { font-size: 26px; margin-bottom: 12px; color: #dc2626; font-weight: 800; }
+            p { font-size: 15px; color: #991b1b; line-height: 1.5; margin: 0 0 10px; }
+            .badge { display: inline-block; background: #fee2e2; color: #991b1b; font-weight: 800; padding: 6px 14px; border-radius: 20px; font-size: 14px; margin-bottom: 16px; }
           </style>
         </head>
         <body>
           <div class="card">
-            <h1>✗ Order Rejected</h1>
-            <p>Order <strong>#${order._id.toString().slice(-6)}</strong> has been rejected and marked as <strong>FAILED/CANCELLED</strong>.</p>
-            <p>No stock was deducted since the payment was not approved.</p>
+            <div class="badge">✗ Payment Not Received</div>
+            <h1>Order Rejected & Cancelled</h1>
+            <p>Order <strong>#${order.customOrderId || order._id.toString().slice(-6)}</strong> has been marked as <strong>CANCELLED</strong>.</p>
+            <p>The customer's screen has been notified with complaint and support contact details.</p>
           </div>
         </body>
       </html>
     `);
   } catch (error) {
     res.status(500).send(`<h1>Server Error</h1><p>${error.message}</p>`);
+  }
+};
+
+// @desc    Customer notifies they completed payment via UPI QR
+// @route   POST /api/orders/:id/claim-payment
+// @access  Private/Customer
+const claimPayment = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    order.paymentDetails = {
+      ...(order.paymentDetails || {}),
+      status: 'AWAITING_ADMIN_VERIFICATION',
+      claimedAt: new Date()
+    };
+    await order.save();
+
+    const shortId = order.customOrderId || order._id.toString().slice(-6);
+    const amountStr = order.totalAmount.toFixed(0);
+    const baseUrl = process.env.SMS_REDIRECT_BASE_URL || 'https://www.tenaquarium.com';
+    const actionUrl = `${baseUrl}/api/orders/a/${order._id}`;
+
+    // 0. Instant Admin Real-Time SSE Push (< 5ms) to all connected Admin screens/apps
+    try {
+      const { notifyAdminClients } = require('./paymentController');
+      notifyAdminClients({
+        type: 'PAYMENT_CLAIMED',
+        orderId: order._id,
+        shortId,
+        amount: order.totalAmount,
+        customerName: order.shippingAddress?.name || 'Customer',
+        customerPhone: order.shippingAddress?.phone || '',
+        paymentProofImage: order.paymentProofImage || null,
+        timestamp: Date.now()
+      });
+    } catch (sseErr) {
+      console.warn('Admin SSE broadcast notice:', sseErr.message);
+    }
+
+    // Send instant SMS to Admin phone within 1 second
+    const adminSms = `TENAQUARIUM ALERT: Customer claims Rs ${amountStr} paid for Order #${shortId}. Check your bank and confirm: ${actionUrl}`;
+    sendSMS(adminSms).catch((err) => {
+      console.warn('Admin claim payment SMS notification failed:', err.message);
+    });
+
+    // Send instant Email alert to Admin phone via verified Gmail SMTP (< 500ms)
+    try {
+      const nodemailer = require('nodemailer');
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: process.env.SMTP_PORT || 587,
+          secure: false,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          }
+        });
+        transporter.sendMail({
+          from: `"TEN Aquarium Orders" <${process.env.SMTP_USER}>`,
+          to: process.env.SMTP_USER,
+          subject: `⚡ URGENT PAYMENT ALERT: Order #${shortId} (₹${amountStr})`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; max-width: 440px; border: 1.5px solid #0284c7; border-radius: 16px; background: #ffffff;">
+              <h2 style="color: #0369a1; margin-top: 0; font-size: 20px;">Customer Claims UPI Payment</h2>
+              <p style="font-size: 15px; color: #334155; line-height: 1.5;">Customer claims payment of <strong style="color: #059669; font-size: 17px;">₹${amountStr}</strong> for <strong>Order #${shortId}</strong>.</p>
+              <p style="font-size: 14px; color: #64748b;">Please check your SBI / Google Pay app, then tap below:</p>
+              <div style="text-align: center; margin: 24px 0;">
+                <a href="${actionUrl}" style="background: #0284c7; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
+                  Open Verification Page (YES / NO)
+                </a>
+              </div>
+              <p style="font-size: 12px; color: #94a3b8; word-break: break-all;">Direct link: ${actionUrl}</p>
+            </div>
+          `
+        }).then(() => {
+          console.log(`[ALERT EMAIL SENT] Sent instant payment claim notification to ${process.env.SMTP_USER}`);
+        }).catch(e => console.warn('Admin payment claim email notification failed:', e.message));
+      }
+    } catch (mailErr) {
+      console.warn('Mail dispatch error:', mailErr.message);
+    }
+
+    console.log(`[CLAIM PAYMENT] Customer notified payment completed for Order #${shortId}. Action URL: ${actionUrl}`);
+
+    res.json({
+      success: true,
+      message: 'Merchant notified. Awaiting bank verification.',
+      orderId: order._id,
+      customOrderId: shortId
+    });
+  } catch (error) {
+    console.error('Error in claimPayment:', error.message);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -964,50 +1109,58 @@ const actionOrderSMS = async (req, res) => {
       return res.status(404).send('<h1>Error: Order not found</h1>');
     }
 
-    const shortId = order._id.toString().slice(-6);
+    const shortId = order.customOrderId || order._id.toString().slice(-6);
     const amount = order.totalAmount.toLocaleString();
-    const upiId = order.customerUpiId || 'Not provided yet';
+    const upiId = order.customerUpiId || 'Direct UPI QR Scan';
 
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Tenaquarium Order Approval</title>
+        <title>TEN Aquarium - Payment Verification</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f8fafc; padding: 20px; text-align: center; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-          .card { max-width: 400px; width: 100%; background: white; padding: 30px; border-radius: 24px; box-shadow: 0 10px 30px rgba(2, 132, 199, 0.08); border: 1px solid #e2e8f0; box-sizing: border-box; }
-          h1 { font-size: 24px; color: #1e3a8a; margin-top: 0; margin-bottom: 20px; font-weight: 800; }
-          .details { background: #f1f5f9; padding: 18px; border-radius: 16px; font-size: 15px; text-align: left; margin-bottom: 30px; border: 1px solid #cbd5e1; }
+          .card { max-width: 420px; width: 100%; background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(2, 132, 199, 0.08); border: 1.5px solid #e2e8f0; box-sizing: border-box; }
+          .badge { display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: 800; padding: 6px 14px; border-radius: 20px; font-size: 13px; margin-bottom: 14px; }
+          h1 { font-size: 22px; color: #1e3a8a; margin-top: 0; margin-bottom: 16px; font-weight: 800; }
+          .details { background: #f8fafc; padding: 18px; border-radius: 16px; font-size: 15px; text-align: left; margin-bottom: 24px; border: 1px solid #cbd5e1; }
           .details div { margin-bottom: 10px; color: #334155; }
           .details div:last-child { margin-bottom: 0; }
-          .btn { display: block; width: 100%; padding: 16px; margin-bottom: 14px; border: none; border-radius: 14px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.1s, opacity 0.2s; box-sizing: border-box; }
+          .question { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 18px; padding: 12px; background: #fef9c3; border: 1px solid #fde047; border-radius: 12px; }
+          .btn { display: block; width: 100%; padding: 16px; margin-bottom: 12px; border: none; border-radius: 14px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.1s, opacity 0.2s; box-sizing: border-box; }
           .btn:active { transform: scale(0.98); }
           .btn-approve { background: #10b981; color: white; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3); }
           .btn-reject { background: #ef4444; color: white; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25); }
           .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-          .status-msg { display: none; font-size: 18px; font-weight: bold; margin-top: 20px; animation: popIn 0.3s ease-out; }
+          .status-msg { display: none; font-size: 17px; font-weight: bold; margin-top: 20px; animation: popIn 0.3s ease-out; }
           @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         </style>
       </head>
       <body>
         <div class="card">
-          <h1>Order Decision</h1>
+          <div class="badge">Merchant Payment Check</div>
+          <h1>Verify Customer Payment</h1>
+          
           <div class="details">
             <div>Order ID: <strong>#${shortId}</strong></div>
-            <div>Amount: <strong style="color: #059669; font-size: 18px;">₹${amount}</strong></div>
-            ${order.customerUpiId ? `<div>UPI ID: <strong>${order.customerUpiId}</strong></div>` : ''}
+            <div>Expected Amount: <strong style="color: #059669; font-size: 19px;">₹${amount}</strong></div>
+            <div>Beneficiary: <strong>tenaquarium457@oksbi (SBI)</strong></div>
           </div>
           
           ${order.paymentProofImage ? `
           <div style="margin-top: 15px; margin-bottom: 20px; text-align: left;">
-            <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; color: #1e3a8a;">Payment Screenshot:</div>
+            <div style="font-weight: bold; font-size: 13px; margin-bottom: 8px; color: #1e3a8a;">Uploaded Payment Proof:</div>
             <img src="${order.paymentProofImage}" style="max-width: 100%; max-height: 380px; border-radius: 12px; border: 1.5px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.15); object-fit: contain; display: block; margin: 0 auto;" alt="Payment Proof" />
           </div>
           ` : ''}
+
+          <div class="question">
+            Did you receive ₹${amount} in your SBI / Google Pay account?
+          </div>
           
-          <button class="btn btn-approve" onclick="submitAction('approve')">Approve Payment</button>
-          <button class="btn btn-reject" onclick="submitAction('reject')">Reject / Cancel</button>
+          <button class="btn btn-approve" onclick="submitAction('approve')">✓ YES - Payment Received</button>
+          <button class="btn btn-reject" onclick="submitAction('reject')">✗ NO - Payment Not Received</button>
           
           <div id="status" class="status-msg"></div>
         </div>
@@ -1016,20 +1169,19 @@ const actionOrderSMS = async (req, res) => {
           async function submitAction(action) {
             const statusDiv = document.getElementById('status');
             statusDiv.style.display = 'block';
-            statusDiv.innerHTML = 'Processing request...';
+            statusDiv.innerHTML = 'Updating order status...';
             statusDiv.style.color = '#475569';
 
             try {
               const res = await fetch('/api/orders/' + (action === 'approve' ? 'approve-sms' : 'reject-sms') + '/${order._id}');
               if (res.ok) {
                 if (action === 'approve') {
-                  statusDiv.innerHTML = '✓ Order Approved Successfully!';
+                  statusDiv.innerHTML = '✓ Payment Confirmed! Customer notified.';
                   statusDiv.style.color = '#10b981';
                 } else {
-                  statusDiv.innerHTML = '✗ Order Rejected & Cancelled!';
+                  statusDiv.innerHTML = '✗ Order Cancelled. Customer notified with complaint details.';
                   statusDiv.style.color = '#ef4444';
                 }
-                // Disable buttons
                 document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
               } else {
                 statusDiv.innerHTML = 'Failed to submit action.';
@@ -1395,4 +1547,5 @@ module.exports = {
   updateDealerPayoutStatus,
   submitRefundBankDetails,
   validateScreenshot,
+  claimPayment,
 };

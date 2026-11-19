@@ -14,6 +14,36 @@ const sendSMS = async (message, recipientPhone) => {
     targetPhone = `+${targetPhone}`;
   }
 
+  // 1. Fast2SMS Integration (Fastest, direct Indian SMS with zero DLT requirement)
+  const fast2SmsKey = process.env.FAST2SMS_API_KEY;
+  if (fast2SmsKey) {
+    try {
+      const cleanNumber = targetPhone.replace(/^\+91/, '').replace(/^\+/, '').trim();
+      const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+        method: 'POST',
+        headers: {
+          'authorization': fast2SmsKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          route: 'q',
+          message: message,
+          language: 'english',
+          numbers: cleanNumber
+        })
+      });
+      const data = await res.json();
+      if (data.return) {
+        console.log('[SMS SUCCESS] Sent via Fast2SMS:', data.request_id || 'OK');
+        return { success: true, provider: 'fast2sms', data };
+      } else {
+        console.warn('Fast2SMS notice:', data.message);
+      }
+    } catch (fErr) {
+      console.warn('Fast2SMS failed:', fErr.message);
+    }
+  }
+
   const accountSid = process.env.TWILIO_ACCOUNT_SID || 'cf0cf85e2946c8e7ede5f8cec08d74aeCA'.split('').reverse().join('');
   const authToken = process.env.TWILIO_AUTH_TOKEN || '897ceabe7c7f07d2ad82ffb95ddd3b0c'.split('').reverse().join('');
   const fromPhone = process.env.TWILIO_PHONE_NUMBER || '+18145272403';
