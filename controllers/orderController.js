@@ -406,7 +406,29 @@ const submitPaymentProof = async (req, res) => {
 
     if (customerUpiId) order.customerUpiId = customerUpiId;
     if (paymentProofImage) order.paymentProofImage = paymentProofImage;
+    order.paymentDetails = {
+      ...(order.paymentDetails || {}),
+      status: 'AWAITING_ADMIN_VERIFICATION',
+      claimedAt: new Date()
+    };
     await order.save();
+
+    // Instant Admin Notification (Real-Time SSE + Polling Stream)
+    try {
+      const { notifyAdminClients } = require('./paymentController');
+      notifyAdminClients({
+        type: 'PAYMENT_CLAIMED',
+        orderId: order._id,
+        shortId: order.customOrderId || order._id.toString().slice(-6),
+        amount: order.totalAmount,
+        customerName: order.shippingAddress?.name || 'Customer',
+        customerPhone: order.shippingAddress?.phone || '',
+        paymentProofImage: order.paymentProofImage || null,
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      console.warn('notifyAdminClients error in submitPaymentProof:', e.message);
+    }
 
     // Create database notification for admins
     const User = mongoose.model('User');

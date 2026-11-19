@@ -6,6 +6,7 @@ const {
   handlePaymentWebhook,
   streamPaymentStatus,
   streamAdminPaymentAlerts,
+  getAdminPendingPaymentAlerts,
   sandboxVerifyPayment,
   handleUpiAppNotification,
 } = require('../controllers/paymentController');
@@ -19,6 +20,9 @@ router.get('/stream/:orderId', streamPaymentStatus);
 
 // Real-Time Admin SSE Stream for instant UPI payment claims (< 5ms)
 router.get('/admin-stream', streamAdminPaymentAlerts);
+
+// Real-Time Database Polling for Admin Pending Payment Claims (Works on Vercel & Mobile)
+router.get('/admin-pending-alerts', getAdminPendingPaymentAlerts);
 
 // Real-time live payment status check (polling fallback)
 router.get('/status/:orderId', getPaymentStatus);

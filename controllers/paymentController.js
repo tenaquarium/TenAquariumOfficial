@@ -759,12 +759,49 @@ const handleUpiAppNotification = async (req, res) => {
   }
 };
 
+// @desc    Get real-time pending payment verification alerts for Admin
+// @route   GET /api/payments/admin-pending-alerts
+// @access  Public / Admin
+const getAdminPendingPaymentAlerts = async (req, res) => {
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const pendingOrders = await Order.find({
+      paymentMethod: 'UPI-QR',
+      paymentStatus: { $in: ['pending', 'PENDING'] },
+      'paymentDetails.status': 'AWAITING_ADMIN_VERIFICATION',
+      $or: [
+        { 'paymentDetails.claimedAt': { $gte: fiveMinutesAgo } },
+        { updatedAt: { $gte: fiveMinutesAgo } }
+      ]
+    })
+    .sort({ updatedAt: -1 })
+    .limit(5);
+
+    const alerts = pendingOrders.map(order => ({
+      type: 'PAYMENT_CLAIMED',
+      orderId: order._id,
+      shortId: order.customOrderId || order._id.toString().slice(-6),
+      amount: order.totalAmount,
+      customerName: order.shippingAddress?.name || 'Customer',
+      customerPhone: order.shippingAddress?.phone || '',
+      paymentProofImage: order.paymentProofImage || null,
+      claimedAt: order.paymentDetails?.claimedAt || order.updatedAt,
+      timestamp: Date.now()
+    }));
+
+    res.json({ success: true, count: alerts.length, alerts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getUpiPaymentDetails,
   getPaymentStatus,
   handlePaymentWebhook,
   streamPaymentStatus,
   streamAdminPaymentAlerts,
+  getAdminPendingPaymentAlerts,
   sandboxVerifyPayment,
   handleUpiAppNotification,
   finalizeVerifiedPayment,
