@@ -15,6 +15,8 @@ const {
   markRefundCompleted,
   updateDealerPayoutStatus,
   submitRefundBankDetails,
+  validateScreenshot,
+  claimPayment,
 } = require('../controllers/orderController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -33,6 +35,8 @@ router.route('/:id')
   .get(protect, getOrderById)
   .put(protect, authorize('customer', 'dealer', 'admin'), updateOrderStatus);
 
+router.post('/:id/claim-payment', protect, authorize('customer', 'dealer'), claimPayment);
+router.post('/:id/validate-screenshot', protect, authorize('customer', 'dealer'), validateScreenshot);
 router.put('/:id/payment-proof', protect, authorize('customer', 'dealer'), submitPaymentProof);
 router.put('/:id/refund-complete', protect, authorize('admin'), markRefundCompleted);
 router.put('/:id/dealer-payout', protect, authorize('admin'), updateDealerPayoutStatus);

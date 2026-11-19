@@ -56,12 +56,12 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'failed'],
+      enum: ['pending', 'paid', 'failed', 'PAID', 'FAILED', 'PENDING'],
       default: 'pending',
     },
     orderStatus: {
       type: String,
-      enum: ['Processing', 'Shipped', 'In Transit', 'Delivered', 'Cancelled', 'Returned'],
+      enum: ['Processing', 'Shipped', 'In Transit', 'Delivered', 'Cancelled', 'Returned', 'PLACED', 'Placed'],
       default: 'Processing',
     },
     dealerPayoutStatus: {
@@ -96,6 +96,17 @@ const orderSchema = new mongoose.Schema(
     qrPaymentApprovedByAdmin: {
       type: Boolean,
       default: false,
+    },
+    paymentDetails: {
+      transactionId: { type: String, default: '' },
+      providerPaymentId: { type: String, default: '' },
+      providerOrderId: { type: String, default: '' },
+      upiUtr: { type: String, default: '' },
+      paidAmount: { type: Number, default: 0 },
+      paidAt: { type: Date },
+      gateway: { type: String, default: 'UPI' },
+      signature: { type: String, default: '' },
+      status: { type: String, enum: ['PENDING', 'SUCCESS', 'FAILED', 'AWAITING_ADMIN_VERIFICATION', 'CLAIMED', 'AWAITING_VERIFICATION'], default: 'PENDING' },
     },
     courierService: {
       type: String,

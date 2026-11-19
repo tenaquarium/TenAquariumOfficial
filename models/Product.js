@@ -41,6 +41,10 @@ const productSchema = new mongoose.Schema(
       type: [String],
       required: [true, 'Please add at least one product image URL'],
     },
+    imageHashes: {
+      type: [String],
+      index: true,
+    },
     dealerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -84,5 +88,8 @@ productSchema.index({ dealerId: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ productName: 1 });
 productSchema.index({ category: 1, price: 1 });
+productSchema.index({ createdAt: -1 }); // Added for fast newest sorting
+productSchema.index({ averageRating: -1 }); // Added for fast best rating sorting
+productSchema.index({ soldCount: -1, averageRating: -1 }); // Added for fast popular sorting
 
 module.exports = mongoose.model('Product', productSchema);

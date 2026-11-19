@@ -5,9 +5,7 @@ const {
   getAllRates,
   upsertRate,
   deleteRate,
-  getAllZones,
-  upsertZone,
-  deleteZone,
+  
   checkAvailability
 } = require('../controllers/courierController');
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -26,10 +24,5 @@ router.route('/rates')
 
 router.delete('/rates/:id', deleteRate);
 
-router.route('/zones')
-  .get(getAllZones)
-  .post(upsertZone);
-
-router.delete('/zones/:id', deleteZone);
 
 module.exports = router;

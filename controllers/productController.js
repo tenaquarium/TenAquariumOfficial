@@ -1,14 +1,30 @@
 const Product = require('../models/Product');
 const Dealer = require('../models/Dealer');
 const User = require('../models/User');
+const Offer = require('../models/Offer');
+const { processImage, hammingDistance } = require('../utils/imageUtils');
 
 // @desc    Get all products with advanced filters
 // @route   GET /api/products
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    const { keyword, category, priceMin, priceMax, rating, sort } = req.query;
+    const { keyword, category, priceMin, priceMax, rating, sort, offerId, page, limit } = req.query;
     let query = {};
+
+    // Filter by offerId
+    if (offerId) {
+      const offer = await Offer.findById(offerId);
+      if (offer) {
+        if (offer.offerScope === 'category' && offer.targetCategories?.length > 0) {
+          query.category = { $in: offer.targetCategories };
+        } else if (offer.offerScope === 'product' && offer.targetProducts?.length > 0) {
+          query._id = { $in: offer.targetProducts };
+        } else if (offer.offerScope === 'store_wide') {
+          query.dealerId = offer.dealerId;
+        }
+      }
+    }
 
     // Filter by keyword (product name)
     if (keyword) {
@@ -17,7 +33,14 @@ const getProducts = async (req, res) => {
 
     // Filter by category
     if (category && category !== 'All') {
-      query.category = category;
+      if (query.category && query.category.$in) {
+        // If offerId already set a category filter, we might intersect them, or just let category override/and
+        // For simplicity, we override or you can do $and.
+        // Usually, if user selects a category, it overrides.
+        query.category = category;
+      } else {
+        query.category = category;
+      }
     }
 
     // Filter by price
@@ -47,7 +70,7 @@ const getProducts = async (req, res) => {
       }
     }
 
-    let apiQuery = Product.find(query).populate('dealerId', 'name email phone');
+    let apiQuery = Product.find(query).select('-imageHashes').populate('dealerId', 'name email phone');
 
     // Sorting
     if (sort) {
@@ -68,6 +91,10 @@ const getProducts = async (req, res) => {
       apiQuery = apiQuery.sort({ createdAt: -1 }); // Default to newest
     }
 
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 100;
+    const skip = (pageNum - 1) * limitNum;
+    apiQuery = apiQuery.skip(skip).limit(limitNum);
     const products = await apiQuery;
     
     // Fetch active dealers matching these products to attach discount details
@@ -83,6 +110,14 @@ const getProducts = async (req, res) => {
       };
     });
 
+    // Fetch active offers from the Offer model
+    const now = new Date();
+    const activeOffers = await Offer.find({
+      status: 'APPROVED',
+      startDateTime: { $lte: now },
+      endDateTime: { $gte: now }
+    });
+
     // Filter duplicates by name per dealer
     const seenDealerProducts = new Set();
     const uniqueProducts = [];
@@ -94,9 +129,30 @@ const getProducts = async (req, res) => {
         seenDealerProducts.add(nameKey);
         
         const prodObj = prod.toObject();
-        prodObj.dealerOffer = dealerOffersMap[dealerIdStr] || {
-          discountPercentage: 0,
-          customOfferText: '',
+        
+        let bestDiscount = dealerOffersMap[dealerIdStr]?.discountPercentage || 0;
+        let customOfferText = dealerOffersMap[dealerIdStr]?.customOfferText || '';
+
+        // Check if any active offer applies to this specific product
+        for (const offer of activeOffers) {
+          if (offer.dealerId.toString() !== dealerIdStr) continue;
+          
+          let applies = false;
+          if (offer.offerScope === 'store' || offer.offerScope === 'store_wide') applies = true;
+          if (offer.offerScope === 'category' && offer.targetCategories && offer.targetCategories.includes(prod.category)) applies = true;
+          if (offer.offerScope === 'product' && offer.targetProducts && offer.targetProducts.map(p => p.toString()).includes(prod._id.toString())) applies = true;
+
+          if (applies) {
+            if (offer.benefitType === 'percentage' && offer.benefitValue > bestDiscount) {
+              bestDiscount = offer.benefitValue;
+              customOfferText = offer.offerName;
+            }
+          }
+        }
+
+        prodObj.dealerOffer = {
+          discountPercentage: bestDiscount,
+          customOfferText: customOfferText,
         };
         
         uniqueProducts.push(prodObj);
@@ -191,6 +247,32 @@ const createProduct = async (req, res) => {
       });
     }
 
+    // --- NEW: Image Optimization & Duplicate Detection ---
+    const optimizedImages = [];
+    const imageHashes = [];
+    
+    // Fetch all existing hashes for this dealer to detect cross-product duplicates
+    const dealerProducts = await Product.find({ dealerId: req.user._id }).select('imageHashes');
+    const existingHashes = dealerProducts.flatMap(p => p.imageHashes || []);
+
+    for (const base64Image of images) {
+      // Process image using sharp + blockhash-core
+      const { optimizedImage, hash } = await processImage(base64Image);
+      
+      // Check for duplicate visual (Hamming distance < 10 indicates highly similar)
+      const isDuplicate = existingHashes.some(existingHash => hammingDistance(existingHash, hash) < 10);
+      
+      if (isDuplicate) {
+        return res.status(400).json({
+          message: 'One of the uploaded images is a visual duplicate of an image you have already uploaded.'
+        });
+      }
+
+      optimizedImages.push(optimizedImage);
+      imageHashes.push(hash);
+    }
+    // --- END NEW ---
+
     const hasVariantsBool = hasVariants === true || hasVariants === 'true';
     let validatedVariants = [];
     let calculatedStock = Number(stock) || 0;
@@ -223,7 +305,8 @@ const createProduct = async (req, res) => {
       price,
       stock: calculatedStock,
       minQuantity: minQuantity !== undefined ? Number(minQuantity) : 2,
-      images: images || ['https://images.unsplash.com/photo-1522069169874-c58ec4b76be5?w=500'],
+      images: optimizedImages,
+      imageHashes,
       dealerId: req.user._id,
       isReturnable: isReturnable !== undefined ? isReturnable : true,
       hasVariants: hasVariantsBool,

@@ -1,8 +1,14 @@
 const CourierRate = require('../models/CourierRate');
-const ZoneMapping = require('../models/ZoneMapping');
+
 const Settings = require('../models/Settings');
 
 const isFreeShippingActive = async () => {
+  // Hard expiration date for free shipping campaign
+  const campaignExpiration = new Date('2026-09-01T00:00:00+05:30');
+  if (new Date() >= campaignExpiration) {
+    return false;
+  }
+
   const config = await Settings.findOne({ key: 'freeShipping' });
   if (config && config.value && config.value.status === 'ON') {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -236,7 +242,6 @@ const checkAvailability = async (req, res) => {
       console.error('Postal API error in backend check-availability', apiErr.message);
     }
 
-    // 2. If not resolved, try ZoneMapping
     if (!state) {
       const deliveryZoneInfo = await getZoneForPincode(deliveryPincode);
       if (deliveryZoneInfo) {
@@ -276,18 +281,45 @@ const checkAvailability = async (req, res) => {
     const freeShipping = await isFreeShippingActive();
     const finalAmount = freeShipping ? 0 : Math.max(1, Math.ceil(weight || 0.5)) * ratePerKg;
 
-    const quotes = [
-      {
+    // Validate Courier Availability (Professional Courier & ST Courier)
+    // ST Courier is only available for South states (pincode starts with 5 or 6, meaning Zone A and Zone B)
+    // Professional Courier is available for Zone A, B, C, D, E (all mapped Indian pincodes)
+    const isSTCourierAvailable = /^[5-6]/.test(deliveryPincode);
+    
+
+    const quotes = [];
+
+    // ST Courier Quote
+    if (isSTCourierAvailable) {
+      quotes.push({
+        courierName: 'ST Courier',
         serviceType: 'Standard',
         finalAmount: finalAmount,
+        estDays: cleanState.includes('tamilnadu') ? 2 : 4
+      });
+    }
+
+    // Professional Courier Quote
+    if (true) {
+      quotes.push({
+        courierName: 'Professional Courier',
+        serviceType: 'Standard',
+        finalAmount: finalAmount + 10,
         estDays: cleanState.includes('tamilnadu') ? 2 : 5
-      }
-    ];
+      });
+    }
+
+    if (quotes.length === 0) {
+      return res.json({
+        success: false,
+        message: 'No delivery service available for this pincode via ST Courier or Professional Courier.'
+      });
+    }
 
     res.json({
       success: true,
       available: true,
-      courierName: 'Standard Shipping',
+      courierName: quotes[0].courierName,
       quotes,
       district,
       state,
@@ -303,8 +335,6 @@ module.exports = {
   getAllRates,
   upsertRate,
   deleteRate,
-  getAllZones,
-  upsertZone,
-  deleteZone,
+  
   checkAvailability
 };
