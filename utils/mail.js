@@ -317,7 +317,8 @@ const sendStatusEmail = async (order, customerEmail, status) => {
 
 const sendAdminOtpEmail = async (email, otp) => {
   try {
-    const recipient = email.toLowerCase() === 'admin457@tenaquarium.com' ? 'tenaquarium@gmail.com' : email;
+    const isSpecialAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('tenaquarium');
+    const recipient = isSpecialAdmin ? 'tenaquarium@gmail.com' : email;
     const mailOptions = {
       from: `"${process.env.SMTP_SENDER_NAME || 'TENAQUARIUM Verification'}" <${process.env.SMTP_USER}>`,
       to: recipient,
@@ -348,7 +349,8 @@ const sendAdminOtpEmail = async (email, otp) => {
 
 const sendAdminLoginDeviceAlert = async (email, ip, userAgent, activeSessionsCount, activeSessions) => {
   try {
-    const recipient = email.toLowerCase() === 'admin457@tenaquarium.com' ? 'tenaquarium@gmail.com' : email;
+    const isSpecialAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('tenaquarium');
+    const recipient = isSpecialAdmin ? 'tenaquarium@gmail.com' : email;
     const sessionListHtml = activeSessions.map((s, index) => `
       <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
         <td style="padding: 8px 0; color: #334155;"><strong>Device ${index + 1}:</strong> ${s.deviceInfo || 'Unknown'}</td>

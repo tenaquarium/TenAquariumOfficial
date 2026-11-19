@@ -417,14 +417,22 @@ const sendOtp = async (req, res) => {
   }
 
   // DNS MX record check to verify domain can receive email
-  try {
-    const dns = require('dns').promises;
-    const mxRecords = await dns.resolveMx(domain);
-    if (!mxRecords || mxRecords.length === 0) {
-      return res.status(400).json({ message: `Invalid domain: The email domain "${domain}" has no mail server configuration.` });
+  const knownDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'zoho.com', 'tenaquarium.com'];
+  if (!knownDomains.includes(domain)) {
+    try {
+      const dns = require('dns').promises;
+      const mxRecords = await Promise.race([
+        dns.resolveMx(domain),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      ]);
+      if (!mxRecords || mxRecords.length === 0) {
+        return res.status(400).json({ message: `Invalid domain: The email domain "${domain}" has no mail server configuration.` });
+      }
+    } catch (err) {
+      if (err.message !== 'timeout') {
+        return res.status(400).json({ message: `Invalid domain: The email domain "${domain}" does not exist or has no active mail servers.` });
+      }
     }
-  } catch (err) {
-    return res.status(400).json({ message: `Invalid domain: The email domain "${domain}" does not exist or has no active mail servers.` });
   }
 
   // Generate 6 digit OTP
