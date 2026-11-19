@@ -430,11 +430,27 @@ const submitPaymentProof = async (req, res) => {
       console.warn('notifyAdminClients error in submitPaymentProof:', e.message);
     }
 
-    // Create database notification for admins
-    const User = mongoose.model('User');
-    const admins = await User.find({ role: 'admin' });
-    for (const admin of admins) {
-      
+    // Create database notification and real-time push for admins
+    try {
+      const { dispatchNotification } = require('../socket');
+      dispatchNotification({
+        role: 'admin',
+        title: `⚡ Payment Claimed: ₹${Number(order.totalAmount).toLocaleString()}`,
+        message: `Customer ${order.shippingAddress?.name || 'Customer'} claims payment completed for Order #${order.customOrderId || order._id.toString().slice(-6)}. Tap to verify.`,
+        type: 'PAYMENT',
+        data: {
+          orderId: order._id,
+          shortId: order.customOrderId || order._id.toString().slice(-6),
+          amount: order.totalAmount,
+          customerName: order.shippingAddress?.name || 'Customer',
+          customerPhone: order.shippingAddress?.phone || '',
+          paymentProofImage: order.paymentProofImage || null,
+          status: 'AWAITING_VERIFICATION',
+          url: '/admin/dashboard?tab=orders'
+        }
+      }).catch(e => console.warn('Payment proof admin dispatch err:', e.message));
+    } catch (notifErr) {
+      console.warn('dispatchNotification error in submitPaymentProof:', notifErr.message);
     }
 
     // Send real urgent SMS notification to Admin in the background

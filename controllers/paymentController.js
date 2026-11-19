@@ -243,6 +243,49 @@ const finalizeVerifiedPayment = async (orderId, {
 
   console.log(`[PAYMENT CONFIRMED] Order #${order.customOrderId || order._id}: DB write in ${dbTimeMs}ms, Total backend pipeline: ${Date.now() - tStart}ms`);
 
+  // 4b. Real-Time Notification Center & Web Push (Socket.IO + VAPID)
+  try {
+    const { dispatchNotification } = require('../socket');
+    // Notify Admins
+    dispatchNotification({
+      role: 'admin',
+      title: `✅ Payment Confirmed: ₹${finalPaidAmount.toLocaleString()}`,
+      message: `Order #${order.customOrderId || order._id.toString().slice(-6)} verified via ${gateway} (Txn: ${verifiedTxnId}). Customer: ${order.shippingAddress?.name || 'Customer'}.`,
+      type: 'PAYMENT',
+      data: {
+        orderId: order._id,
+        shortId: order.customOrderId || order._id.toString().slice(-6),
+        amount: finalPaidAmount,
+        transactionId: verifiedTxnId,
+        upiUtr: verifiedUtr,
+        customerName: order.shippingAddress?.name || 'Customer',
+        customerPhone: order.shippingAddress?.phone || '',
+        status: 'PAID',
+        url: '/admin/dashboard?tab=orders'
+      }
+    }).catch(e => console.warn('Admin verified payment dispatch err:', e.message));
+
+    // Notify Customer
+    const custId = order.customerId?._id || order.customerId;
+    if (custId) {
+      dispatchNotification({
+        recipientId: custId,
+        title: `🎉 Payment Successful: ₹${finalPaidAmount.toLocaleString()}`,
+        message: `Your payment for Order #${order.customOrderId || order._id.toString().slice(-6)} was successful! We are processing your aquarium products.`,
+        type: 'ORDER',
+        data: {
+          orderId: order._id,
+          amount: finalPaidAmount,
+          transactionId: verifiedTxnId,
+          status: 'PAID',
+          url: '/customer/dashboard'
+        }
+      }).catch(e => console.warn('Customer payment verified dispatch err:', e.message));
+    }
+  } catch (socketNotifErr) {
+    console.warn('dispatchNotification in finalizeVerifiedPayment err:', socketNotifErr.message);
+  }
+
   // 5. Non-Blocking Background Notifications (Email & SMS do not delay the customer UI)
   setImmediate(async () => {
     try {

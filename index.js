@@ -102,6 +102,9 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const offerRoutes = require('./routes/offerRoutes');
+const http = require('http');
+const { initSocket } = require('./socket');
+const notificationRoutes = require('./routes/notificationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 
 // Mount Routes
@@ -112,6 +115,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/courier', courierRoutes);
@@ -125,9 +129,12 @@ app.use('/api/offers', offerRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+const server = http.createServer(app);
+initSocket(server);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
 

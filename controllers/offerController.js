@@ -518,6 +518,32 @@ const approveOffer = async (req, res) => {
       sendSMS(`TEN Aquarium: Your offer "${offer.offerName}" has been APPROVED. It will go live at the scheduled time.`, dealer.phone);
     }
 
+    // Instantly dispatch real-time offer notification to all customers
+    try {
+      const { dispatchNotification } = require('../socket');
+      const discountLabel = offer.benefitType === 'buy_x_get_y' 
+        ? `Buy ${offer.buyX} Get ${offer.getY}` 
+        : offer.benefitType === 'percentage' 
+        ? `${offer.benefitValue}% OFF` 
+        : `₹${offer.benefitValue} OFF`;
+
+      dispatchNotification({
+        role: 'customer',
+        title: `🎉 New Offer: ${offer.offerName}!`,
+        message: `Grab special discount: ${discountLabel} on aquarium products! Limited time offer.`,
+        type: 'OFFER',
+        data: {
+          offerId: offer._id,
+          offerName: offer.offerName,
+          benefitValue: offer.benefitValue,
+          benefitType: offer.benefitType,
+          url: '/products',
+        },
+      }).catch((e) => console.warn('Offer notification dispatch err:', e.message));
+    } catch (notifErr) {
+      console.warn('dispatchNotification error in approveOffer:', notifErr.message);
+    }
+
     res.json(offer);
   } catch (error) {
     console.error('Error approving offer:', error);
