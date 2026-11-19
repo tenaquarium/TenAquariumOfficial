@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
@@ -77,6 +78,9 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // 5. NoSQL Injection Defense (Sanitize inputs)
 app.use(mongoSanitize());
+
+// Serve static assets (e.g. tenaquarium.apk download)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Root Route
 app.get('/', (req, res) => {
