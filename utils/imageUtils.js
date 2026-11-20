@@ -1,8 +1,23 @@
-const sharp = require('sharp');
-const blockhash = require('blockhash-core');
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  console.warn('Sharp module not available, using fallback:', e.message);
+}
+
+let blockhash = null;
+try {
+  blockhash = require('blockhash-core');
+} catch (e) {
+  console.warn('Blockhash module not available, using fallback:', e.message);
+}
 
 // Convert base64 to optimized WebP and calculate perceptual hash
 const processImage = async (base64String) => {
+  if (!base64String) return { optimizedImage: '', hash: '' };
+  if (!sharp || !blockhash) {
+    return { optimizedImage: base64String, hash: 'no-hash' };
+  }
   try {
     // Extract base64 data
     const base64Data = base64String.replace(/^data:image\/\w+;base64,/, '');
@@ -17,9 +32,8 @@ const processImage = async (base64String) => {
     const optimizedBase64 = `data:image/webp;base64,${optimizedBuffer.toString('base64')}`;
 
     // 2. Calculate Perceptual Hash (Blockhash)
-    // blockhash requires raw pixel data
     const { data, info } = await sharp(buffer)
-      .resize(32, 32, { fit: 'fill' }) // Resize to standard 32x32 for hashing
+      .resize(32, 32, { fit: 'fill' })
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -29,22 +43,27 @@ const processImage = async (base64String) => {
 
     return { optimizedImage: optimizedBase64, hash };
   } catch (error) {
-    console.error('Image processing error:', error);
-    throw new Error('Failed to process image');
+    console.error('Image processing fallback:', error.message);
+    return { optimizedImage: base64String, hash: 'err-hash' };
   }
 };
 
 // Calculate Hamming distance between two hex hashes
 const hammingDistance = (hash1, hash2) => {
-  let distance = 0;
-  let val1 = BigInt('0x' + hash1);
-  let val2 = BigInt('0x' + hash2);
-  let xor = val1 ^ val2;
-  while (xor > 0n) {
-    distance += Number(xor & 1n);
-    xor >>= 1n;
+  if (!hash1 || !hash2 || hash1 === 'no-hash' || hash2 === 'no-hash') return 100;
+  try {
+    let distance = 0;
+    let val1 = BigInt('0x' + hash1);
+    let val2 = BigInt('0x' + hash2);
+    let xor = val1 ^ val2;
+    while (xor > 0n) {
+      distance += Number(xor & 1n);
+      xor >>= 1n;
+    }
+    return distance;
+  } catch {
+    return 100;
   }
-  return distance;
 };
 
 module.exports = { processImage, hammingDistance };

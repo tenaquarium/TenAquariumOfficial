@@ -5,6 +5,7 @@ const PushSubscription = require('../models/PushSubscription');
  * Send a web push notification to a specific subscription
  */
 const sendPushToSubscription = async (subscription, payload) => {
+  if (!webpush) return false;
   try {
     const pushConfig = {
       endpoint: subscription.endpoint,
