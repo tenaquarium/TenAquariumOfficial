@@ -121,15 +121,18 @@ const dispatchNotification = async ({
     }
 
     // 3. Web Push Notification Payload (Background & Native Desktop/Phone)
+    const formattedTitle = title?.startsWith('TENAQUARIUM') ? title : `TENAQUARIUM • ${title || 'Notification'}`;
     const pushPayload = {
-      title,
+      title: formattedTitle,
       body: message,
-      icon: '/favicon.png',
+      icon: '/logo.png',
       badge: '/favicon.png',
+      timestamp: Date.now(),
       data: {
         url: data.url || (type === 'OFFER' ? '/products' : '/admin/dashboard?tab=orders'),
         type,
         notificationId: notification._id,
+        timestamp: Date.now(),
         ...data,
       },
     };

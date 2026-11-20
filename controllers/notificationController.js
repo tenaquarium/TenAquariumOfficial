@@ -162,6 +162,24 @@ const subscribePush = async (req, res) => {
   }
 };
 
+// @desc    Unsubscribe / disable Web Push notifications
+// @route   POST /api/notifications/unsubscribe
+// @access  Private
+const unsubscribePush = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await PushSubscription.deleteOne({ endpoint, user: req.user._id });
+    } else {
+      await PushSubscription.deleteMany({ user: req.user._id });
+    }
+    res.json({ success: true, message: 'Push notifications disabled successfully' });
+  } catch (error) {
+    console.error('Error disabling push subscription:', error);
+    res.status(500).json({ message: 'Server error disabling push notification' });
+  }
+};
+
 // @desc    Get VAPID public key for frontend push subscription
 // @route   GET /api/notifications/vapid-public-key
 // @access  Public
@@ -209,6 +227,7 @@ module.exports = {
   deleteNotification,
   clearAllNotifications,
   subscribePush,
+  unsubscribePush,
   getPublicKey,
   broadcastOffer,
 };

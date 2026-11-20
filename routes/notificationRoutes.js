@@ -7,6 +7,7 @@ const {
   deleteNotification,
   clearAllNotifications,
   subscribePush,
+  unsubscribePush,
   getPublicKey,
   broadcastOffer,
 } = require('../controllers/notificationController');
@@ -22,6 +23,7 @@ router.delete('/clear-all', protect, clearAllNotifications);
 router.put('/:id/read', protect, markAsRead);
 router.delete('/:id', protect, deleteNotification);
 router.post('/subscribe', protect, subscribePush);
+router.post('/unsubscribe', protect, unsubscribePush);
 
 // Admin-only broadcast route
 router.post('/broadcast-offer', protect, authorize('admin'), broadcastOffer);
