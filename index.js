@@ -130,12 +130,19 @@ app.use(notFound);
 app.use(errorHandler);
 
 const server = http.createServer(app);
-initSocket(server);
 
-const PORT = process.env.PORT || 5000;
+// In local development or dedicated server, initialize Socket.IO and start listener
+if (!process.env.VERCEL) {
+  try {
+    initSocket(server);
+  } catch (err) {
+    console.warn('Socket init error:', err.message);
+  }
 
-server.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-});
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  });
+}
 
 module.exports = app;
