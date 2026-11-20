@@ -27,29 +27,33 @@ const connectDB = async () => {
   try {
     cached.conn = await cached.promise;
     
-    // Automatically seed default categories if none exist
-    const { seedDefaultCategories } = require('../controllers/categoryController');
-    await seedDefaultCategories();
+    // Automatically seed default categories if none exist (non-blocking)
+    try {
+      const { seedDefaultCategories } = require('../controllers/categoryController');
+      seedDefaultCategories().catch(() => {});
+    } catch {}
 
-    // Automatically seed default free shipping campaign configuration
-    const Settings = require('../models/Settings');
-    await Settings.findOneAndUpdate(
-      { key: 'freeShipping' },
-      {
-        $setOnInsert: {
-          key: 'freeShipping',
-          value: {
-            status: 'ON',
-            startDate: '2026-08-01',
-            endDate: '2026-08-31',
+    // Automatically seed default free shipping campaign configuration (non-blocking)
+    try {
+      const Settings = require('../models/Settings');
+      Settings.findOneAndUpdate(
+        { key: 'freeShipping' },
+        {
+          $setOnInsert: {
+            key: 'freeShipping',
+            value: {
+              status: 'ON',
+              startDate: '2026-08-01',
+              endDate: '2026-08-31',
+            }
           }
-        }
-      },
-      { upsert: true }
-    );
+        },
+        { upsert: true }
+      ).catch(() => {});
+    } catch {}
   } catch (error) {
     console.error(`Error connecting to MongoDB: ${error.message}`);
-    process.exit(1);
+    // Never call process.exit in serverless environment
   }
 };
 

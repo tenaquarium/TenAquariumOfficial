@@ -1,4 +1,10 @@
-const { Server } = require('socket.io');
+let Server = null;
+try {
+  Server = require('socket.io').Server;
+} catch {
+  // socket.io optional in serverless
+}
+
 const jwt = require('jsonwebtoken');
 const Notification = require('./models/Notification');
 const { sendPushToUser, sendPushToRole } = require('./utils/webPush');
@@ -6,77 +12,72 @@ const { sendPushToUser, sendPushToRole } = require('./utils/webPush');
 let io = null;
 
 const initSocket = (server) => {
-  io = new Server(server, {
-    cors: {
-      origin: true,
-      credentials: true,
-      methods: ['GET', 'POST'],
-    },
-    pingTimeout: 60000,
-    pingInterval: 25000,
-  });
+  if (process.env.VERCEL || !Server || !server) {
+    return null;
+  }
 
-  // Socket Authentication Middleware
-  io.use((socket, next) => {
-    try {
-      const token =
-        socket.handshake.auth?.token ||
-        socket.handshake.query?.token ||
-        socket.handshake.headers?.authorization?.replace('Bearer ', '');
+  try {
+    io = new Server(server, {
+      cors: {
+        origin: true,
+        credentials: true,
+        methods: ['GET', 'POST'],
+      },
+      pingTimeout: 60000,
+      pingInterval: 25000,
+    });
 
-      if (!token) {
-        // Allow unauthenticated guest connections if needed, but no personal rooms
-        return next();
-      }
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = decoded;
-      return next();
-    } catch (err) {
-      // Invalid token - still allow connection for public broadcasts or reject
-      return next();
-    }
-  });
-
-  io.on('connection', (socket) => {
-    if (socket.user && socket.user.id) {
-      const userRoom = `user_${socket.user.id}`;
-      const roleRoom = `role_${socket.user.role}`;
-
-      socket.join(userRoom);
-      socket.join(roleRoom);
-
-      console.log(`🔌 Socket connected: ${socket.id} | User: ${socket.user.id} (${socket.user.role})`);
-    } else {
-      console.log(`🔌 Socket connected (guest): ${socket.id}`);
-    }
-
-    // Client can also manually join personal room after auth
-    socket.on('authenticate', (token) => {
+    // Socket Authentication Middleware
+    io.use((socket, next) => {
       try {
-        if (!token) return;
+        const token =
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token ||
+          socket.handshake.headers?.authorization?.replace('Bearer ', '');
+
+        if (!token) return next();
+
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         socket.user = decoded;
-        socket.join(`user_${decoded.id}`);
-        socket.join(`role_${decoded.role}`);
-        console.log(`🔌 Socket re-authenticated: ${socket.id} -> User: ${decoded.id} (${decoded.role})`);
-        socket.emit('authenticated', { success: true, user: decoded });
+        return next();
       } catch (err) {
-        socket.emit('authenticated', { success: false, message: 'Invalid token' });
+        return next();
       }
     });
 
-    socket.on('disconnect', () => {
-      // Clean up
+    io.on('connection', (socket) => {
+      if (socket.user && socket.user.id) {
+        const userRoom = `user_${socket.user.id}`;
+        const roleRoom = `role_${socket.user.role}`;
+
+        socket.join(userRoom);
+        socket.join(roleRoom);
+
+        console.log(`🔌 Socket connected: ${socket.id} | User: ${socket.user.id} (${socket.user.role})`);
+      }
+
+      socket.on('authenticate', (token) => {
+        try {
+          if (!token) return;
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          socket.user = decoded;
+          socket.join(`user_${decoded.id}`);
+          socket.join(`role_${decoded.role}`);
+          socket.emit('authenticated', { success: true, user: decoded });
+        } catch {
+          socket.emit('authenticated', { success: false, message: 'Invalid token' });
+        }
+      });
     });
-  });
 
-  return io;
+    return io;
+  } catch (err) {
+    console.warn('Socket.IO init warning:', err.message);
+    return null;
+  }
 };
 
-const getIO = () => {
-  return io;
-};
+const getIO = () => io;
 
 /**
  * Unified Notification Dispatcher:
@@ -104,18 +105,22 @@ const dispatchNotification = async ({
       isRead: false,
     });
 
-    // 2. Real-time Socket.IO Push
+    // 2. Real-time Socket.IO Push (if active)
     if (io) {
-      if (recipientId) {
-        io.to(`user_${recipientId}`).emit('notification', notification);
-      } else if (role && role !== 'all') {
-        io.to(`role_${role}`).emit('notification', notification);
-      } else {
-        io.emit('notification', notification);
+      try {
+        if (recipientId) {
+          io.to(`user_${recipientId}`).emit('notification', notification);
+        } else if (role && role !== 'all') {
+          io.to(`role_${role}`).emit('notification', notification);
+        } else {
+          io.emit('notification', notification);
+        }
+      } catch (emitErr) {
+        console.warn('Socket emit warning:', emitErr.message);
       }
     }
 
-    // 3. Web Push Notification Payload (For Background & Native Desktop/Phone)
+    // 3. Web Push Notification Payload (Background & Native Desktop/Phone)
     const pushPayload = {
       title,
       body: message,
@@ -145,8 +150,8 @@ const dispatchNotification = async ({
 
     return notification;
   } catch (err) {
-    console.error('Error in dispatchNotification:', err);
-    throw err;
+    console.error('Error in dispatchNotification:', err.message);
+    return null;
   }
 };
 

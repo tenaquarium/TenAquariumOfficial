@@ -102,8 +102,6 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const offerRoutes = require('./routes/offerRoutes');
-const http = require('http');
-const { initSocket } = require('./socket');
 const notificationRoutes = require('./routes/notificationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 
@@ -129,11 +127,12 @@ app.use('/api/offers', offerRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-const server = http.createServer(app);
-
 // In local development or dedicated server, initialize Socket.IO and start listener
 if (!process.env.VERCEL) {
+  const http = require('http');
+  const server = http.createServer(app);
   try {
+    const { initSocket } = require('./socket');
     initSocket(server);
   } catch (err) {
     console.warn('Socket init error:', err.message);
